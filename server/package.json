@@ -1,0 +1,19 @@
+{
+  "name": "ted-monitor-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend server for TED Procurement Monitor with MiniMax LLM",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-cron": "^3.0.3",
+    "uuid": "^11.1.0",
+    "xlsx": "^0.18.5"
+  }
+}

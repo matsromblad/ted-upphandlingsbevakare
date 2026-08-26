@@ -1,0 +1,15 @@
+{
+  "name": "ted-upphandlingsbevakare",
+  "version": "1.0.0",
+  "description": "Applikation för att bevaka och analysera offentliga upphandlingar från TED (EU) med MiniMax LLM",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
