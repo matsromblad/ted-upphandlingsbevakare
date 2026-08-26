@@ -1,20 +1,26 @@
 # TED Upphandlingsbevakare (Tenders Electronic Daily Monitor)
 
-En fullstack-applikation för att söka, bevaka och analysera offentliga upphandlingar från **EU:s officiella databas TED (Tenders Electronic Daily)**, förstärkt med **MiniMax-M3 LLM** för intelligent sökning, automatisk CPV-kategorisering, anbudsanalys och AI-copilot.
+En fullstack-applikation för att söka, bevaka och analysera offentliga upphandlingar från **EU:s officiella databas TED (Tenders Electronic Daily)**, förstärkt med **MiniMax-M3 LLM** och **Supabase** för fleranvändarstöd och Single Sign-On (SSO).
 
 ![TED Bevakare](https://img.shields.io/badge/TED-EU%20Procurement-blue)
 ![AI](https://img.shields.io/badge/AI-MiniMax--M3-purple)
+![Supabase](https://img.shields.io/badge/Database-Supabase%20Postgres%20%2B%20Auth-emerald)
 ![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite%20%2B%20Tailwind-blue)
-![Node.js](https://img.shields.io/badge/Backend-Node.js%20%2B%20SQLite-green)
+![Node.js](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-green)
 
 ---
 
 ## 🚀 Funktioner
 
+- **🔐 Fleranvändarstöd & Single Sign-On (SSO)**:
+  - Inloggning via **Google SSO**, **GitHub SSO** eller e-post och lösenord.
+  - Varje användare har sina egna privata bevakningar, träffar, sparade anbud (pipeline) och företagsprofil.
+  - Row Level Security (RLS) i Supabase PostgreSQL säkerställer strikt dataseparation.
+
 - **🔍 TED Live-Sökning & Utforskning**:
   - Direktuppkoppling mot TED Search API v3 (`api.ted.europa.eu`).
   - Sökning på fritext, CPV-koder, geografi (Sverige, Norden, EU), typ av upphandling och datum.
-  - Kort- och tabellvy med visuell deadline-nedräkning (grön/gul/röd).
+  - Kort- och tabellvy med visuell deadline-nedräkning.
   - Stöd för TED Expert Query syntax.
 
 - **🧠 MiniMax Smart Sökassistent (NLP)**:
@@ -43,9 +49,10 @@ En fullstack-applikation för att söka, bevaka och analysera offentliga upphand
 
 ## 🛠️ Teknisk Stack
 
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Date-fns, React-Markdown.
-- **Backend**: Node.js, Express, inbyggd SQLite (`node:sqlite`), Node-Cron, XLSX, Dotenv.
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Date-fns, React-Markdown, `@supabase/supabase-js`.
+- **Backend**: Node.js, Express, `@supabase/supabase-js`, inbyggd SQLite fallback, Node-Cron, XLSX, Dotenv.
 - **AI / LLM**: MiniMax-M3 (Anthropic-kompatibelt API).
+- **Databas & Auth**: Supabase (PostgreSQL med RLS & Auth SSO).
 - **Datakälla**: Publications Office of the European Union – TED API v3.
 
 ---
@@ -63,21 +70,31 @@ cd ted-upphandlingsbevakare
 npm run install:all
 ```
 
-### 3. Konfigurera miljövariabler
-Kopiera `server/.env.example` till `server/.env` och ange din MiniMax API-nyckel:
-```bash
-cp server/.env.example server/.env
-```
-Fyll i:
+### 3. Sätt upp Supabase Databas
+1. Skapa ett gratis projekt på [supabase.com](https://supabase.com).
+2. Öppna **SQL Editor** i Supabase och kör skriptet från [`supabase/schema.sql`](supabase/schema.sql).
+3. Under **Authentication -> Providers** i Supabase kan du aktivera **Google** och **GitHub** för SSO.
+
+### 4. Konfigurera miljövariabler
+Kopiera `server/.env.example` till `server/.env` och fyll i dina nycklar:
 ```env
 PORT=3001
 MINIMAX_API_KEY=din_minimax_api_nyckel
 MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/anthropic/v1
 TED_API_URL=https://api.ted.europa.eu/v3/notices/search
+
+# Supabase
+SUPABASE_URL=https://ditt-projekt.supabase.co
+SUPABASE_ANON_KEY=din_anon_key
+SUPABASE_SERVICE_ROLE_KEY=din_service_role_key
+
+# Frontend
+VITE_SUPABASE_URL=https://ditt-projekt.supabase.co
+VITE_SUPABASE_ANON_KEY=din_anon_key
 ```
 
-### 4. Starta applikationen
+### 5. Starta applikationen
 ```bash
 npm run dev
 ```

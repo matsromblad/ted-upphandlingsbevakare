@@ -1,17 +1,33 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { supabaseAdmin, isSupabaseConfigured } from './supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Local SQLite fallback instance
 const dbPath = path.join(__dirname, '..', 'ted_monitor.db');
-const db = new DatabaseSync(dbPath);
+const localDb = new DatabaseSync(dbPath);
 
-// Initialize tables
-db.exec(`
+// Initialize local SQLite tables with user_id
+localDb.exec(`
+  CREATE TABLE IF NOT EXISTS profiles (
+    id TEXT PRIMARY KEY,
+    email TEXT,
+    full_name TEXT,
+    company_name TEXT DEFAULT 'Mitt Företag AB',
+    description TEXT DEFAULT '',
+    keywords TEXT DEFAULT 'IT-konsult, systemutveckling, molntjänster, cybersäkerhet',
+    preferred_cpv TEXT DEFAULT '["72000000", "72200000"]',
+    preferred_countries TEXT DEFAULT '["SWE"]',
+    min_value INTEGER DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+  );
+
   CREATE TABLE IF NOT EXISTS watchlists (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
     name TEXT NOT NULL,
     query TEXT,
     filters_json TEXT NOT NULL,
@@ -25,19 +41,20 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS watchlist_hits (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
     watchlist_id TEXT NOT NULL,
     notice_id TEXT NOT NULL,
     notice_data_json TEXT NOT NULL,
     is_read INTEGER DEFAULT 0,
     is_saved INTEGER DEFAULT 0,
     discovered_at TEXT DEFAULT (datetime('now', 'localtime')),
-    FOREIGN KEY(watchlist_id) REFERENCES watchlists(id) ON DELETE CASCADE,
-    UNIQUE(watchlist_id, notice_id)
+    UNIQUE(user_id, watchlist_id, notice_id)
   );
 
   CREATE TABLE IF NOT EXISTS saved_tenders (
     id TEXT PRIMARY KEY,
-    notice_id TEXT UNIQUE NOT NULL,
+    user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+    notice_id TEXT NOT NULL,
     title TEXT NOT NULL,
     buyer TEXT,
     country TEXT,
@@ -52,289 +69,673 @@ db.exec(`
     notice_data_json TEXT NOT NULL,
     ai_analysis_json TEXT,
     saved_at TEXT DEFAULT (datetime('now', 'localtime')),
-    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS company_profile (
-    id TEXT PRIMARY KEY,
-    name TEXT DEFAULT 'Mitt Företag',
-    description TEXT DEFAULT '',
-    keywords TEXT DEFAULT '',
-    preferred_cpv TEXT DEFAULT '[]',
-    preferred_countries TEXT DEFAULT '["SWE"]',
-    min_value INTEGER DEFAULT 0,
-    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+    UNIQUE(user_id, notice_id)
   );
 
   CREATE TABLE IF NOT EXISTS chat_messages (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
     session_id TEXT DEFAULT 'default',
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     context_notice_id TEXT,
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
   );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
 `);
 
-// Ensure default company profile exists
-const existingProfile = db.prepare('SELECT id FROM company_profile WHERE id = ?').get('default');
-if (!existingProfile) {
-  db.prepare(`
-    INSERT INTO company_profile (id, name, description, keywords, preferred_cpv, preferred_countries, min_value)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    'default',
-    'Vår Verksamhet AB',
-    'Ledande leverantör av IT-lösningar, molntjänster, systemutveckling och teknisk rådgivning.',
-    'IT-konsult, systemutveckling, molntjänster, IT-drift, cybersäkerhet, AI, agil utveckling',
-    JSON.stringify(['72000000', '72200000', '72220000', '72240000']),
-    JSON.stringify(['SWE', 'DNK', 'NOR']),
-    0
-  );
+// Safe column migrations for existing SQLite databases
+function ensureColumn(table, column, definition) {
+  try {
+    localDb.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (e) {
+    // Column already exists, ignore error
+  }
 }
 
-// Seed initial default watchlists if database is empty
-const existingWatchlists = db.prepare('SELECT COUNT(*) as count FROM watchlists').get();
-if (!existingWatchlists || existingWatchlists.count === 0) {
-  db.prepare(`
-    INSERT INTO watchlists (id, name, query, filters_json, active, interval_minutes, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-  `).run(
-    'wl-default-it',
-    'IT-konsulttjänster & Utveckling (Sverige)',
-    'place-of-performance IN (SWE) AND classification-cpv IN (72000000, 72200000) AND form-type = competition',
-    JSON.stringify({
-      keywords: '',
-      countries: ['SWE'],
-      cpv: ['72000000', '72200000'],
-      formType: 'competition',
-      datePreset: '30d'
-    }),
-    1,
-    60
-  );
+ensureColumn('watchlists', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+ensureColumn('watchlist_hits', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+ensureColumn('saved_tenders', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+ensureColumn('chat_messages', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
 
-  db.prepare(`
-    INSERT INTO watchlists (id, name, query, filters_json, active, interval_minutes, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-  `).run(
-    'wl-default-cloud',
-    'Cybersäkerhet & Molntjänster (Sverige)',
-    'place-of-performance IN (SWE) AND FT ~ (cybersäkerhet OR molntjänster) AND form-type = competition',
-    JSON.stringify({
-      keywords: 'cybersäkerhet OR molntjänster',
-      countries: ['SWE'],
-      formType: 'competition',
-      datePreset: '30d'
-    }),
-    1,
-    60
-  );
-}
-
-// Helper methods for watchlists
+// ==============================================================================
+// WATCHLISTS DAO (Supabase + Local SQLite)
+// ==============================================================================
 export const watchlistDao = {
-  getAll: () => db.prepare('SELECT * FROM watchlists ORDER BY created_at DESC').all(),
-  getById: (id) => db.prepare('SELECT * FROM watchlists WHERE id = ?').get(id),
-  create: (item) => {
-    db.prepare(`
-      INSERT INTO watchlists (id, name, query, filters_json, active, interval_minutes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `).run(item.id, item.name, item.query, item.filters_json, item.active, item.interval_minutes);
-    return watchlistDao.getById(item.id);
+  getAll: async (userId) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlists')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(w => ({
+        ...w,
+        filters_json: typeof w.filters_json === 'object' ? JSON.stringify(w.filters_json) : w.filters_json
+      }));
+    }
+    return localDb.prepare('SELECT * FROM watchlists WHERE user_id = ? ORDER BY created_at DESC').all(userId);
   },
-  update: (id, item) => {
-    db.prepare(`
+
+  getAllActiveSystem: async () => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlists')
+        .select('*')
+        .eq('active', true);
+      if (error) throw error;
+      return (data || []).map(w => ({
+        ...w,
+        filters_json: typeof w.filters_json === 'object' ? JSON.stringify(w.filters_json) : w.filters_json
+      }));
+    }
+    return localDb.prepare('SELECT * FROM watchlists WHERE active = 1').all();
+  },
+
+  getById: async (id, userId) => {
+    if (isSupabaseConfigured) {
+      let query = supabaseAdmin.from('watchlists').select('*').eq('id', id);
+      if (userId) query = query.eq('user_id', userId);
+      const { data } = await query.single();
+      if (!data) return null;
+      return {
+        ...data,
+        filters_json: typeof data.filters_json === 'object' ? JSON.stringify(data.filters_json) : data.filters_json
+      };
+    }
+    if (userId) {
+      return localDb.prepare('SELECT * FROM watchlists WHERE id = ? AND user_id = ?').get(id, userId);
+    }
+    return localDb.prepare('SELECT * FROM watchlists WHERE id = ?').get(id);
+  },
+
+  create: async (item) => {
+    if (isSupabaseConfigured) {
+      const payload = {
+        id: item.id,
+        user_id: item.user_id,
+        name: item.name,
+        query: item.query,
+        filters_json: typeof item.filters_json === 'string' ? JSON.parse(item.filters_json) : item.filters_json,
+        active: Boolean(item.active),
+        interval_minutes: item.interval_minutes || 60
+      };
+      const { data, error } = await supabaseAdmin.from('watchlists').insert(payload).select().single();
+      if (error) throw error;
+      return {
+        ...data,
+        filters_json: JSON.stringify(data.filters_json)
+      };
+    }
+
+    localDb.prepare(`
+      INSERT INTO watchlists (id, user_id, name, query, filters_json, active, interval_minutes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+    `).run(item.id, item.user_id, item.name, item.query, item.filters_json, item.active ? 1 : 0, item.interval_minutes);
+    return watchlistDao.getById(item.id, item.user_id);
+  },
+
+  update: async (id, userId, item) => {
+    if (isSupabaseConfigured) {
+      const payload = {
+        name: item.name,
+        query: item.query,
+        filters_json: typeof item.filters_json === 'string' ? JSON.parse(item.filters_json) : item.filters_json,
+        active: Boolean(item.active),
+        interval_minutes: item.interval_minutes
+      };
+      const { data, error } = await supabaseAdmin
+        .from('watchlists')
+        .update(payload)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      return {
+        ...data,
+        filters_json: JSON.stringify(data.filters_json)
+      };
+    }
+
+    localDb.prepare(`
       UPDATE watchlists
       SET name = ?, query = ?, filters_json = ?, active = ?, interval_minutes = ?
-      WHERE id = ?
-    `).run(item.name, item.query, item.filters_json, item.active, item.interval_minutes, id);
-    return watchlistDao.getById(id);
+      WHERE id = ? AND user_id = ?
+    `).run(item.name, item.query, item.filters_json, item.active ? 1 : 0, item.interval_minutes, id, userId);
+    return watchlistDao.getById(id, userId);
   },
-  updateStats: (id, lastRunAt, hitCount, newCount) => {
-    db.prepare(`
+
+  updateStats: async (id, lastRunAt, hitCount, newCount) => {
+    if (isSupabaseConfigured) {
+      const { data: current } = await supabaseAdmin.from('watchlists').select('new_count').eq('id', id).single();
+      const nextNewCount = (current?.new_count || 0) + (newCount || 0);
+
+      await supabaseAdmin.from('watchlists').update({
+        last_run_at: lastRunAt,
+        last_hit_count: hitCount,
+        new_count: nextNewCount
+      }).eq('id', id);
+      return;
+    }
+
+    localDb.prepare(`
       UPDATE watchlists
       SET last_run_at = ?, last_hit_count = ?, new_count = new_count + ?
       WHERE id = ?
     `).run(lastRunAt, hitCount, newCount, id);
   },
-  clearNewCount: (id) => {
-    db.prepare('UPDATE watchlists SET new_count = 0 WHERE id = ?').run(id);
-  },
-  delete: (id) => {
-    db.prepare('DELETE FROM watchlist_hits WHERE watchlist_id = ?').run(id);
-    return db.prepare('DELETE FROM watchlists WHERE id = ?').run(id);
+
+  delete: async (id, userId) => {
+    if (isSupabaseConfigured) {
+      await supabaseAdmin.from('watchlist_hits').delete().eq('watchlist_id', id).eq('user_id', userId);
+      await supabaseAdmin.from('watchlists').delete().eq('id', id).eq('user_id', userId);
+      return;
+    }
+
+    localDb.prepare('DELETE FROM watchlist_hits WHERE watchlist_id = ? AND user_id = ?').run(id, userId);
+    return localDb.prepare('DELETE FROM watchlists WHERE id = ? AND user_id = ?').run(id, userId);
   }
 };
 
-// Helper methods for watchlist hits
+// ==============================================================================
+// WATCHLIST HITS DAO
+// ==============================================================================
 export const hitsDao = {
-  getByWatchlistId: (watchlistId, limit = 100) => {
-    return db.prepare(`
+  getByWatchlistId: async (watchlistId, userId, limit = 100) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlist_hits')
+        .select('*')
+        .eq('watchlist_id', watchlistId)
+        .eq('user_id', userId)
+        .order('discovered_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data || []).map(h => ({
+        ...h,
+        notice_data_json: typeof h.notice_data_json === 'object' ? JSON.stringify(h.notice_data_json) : h.notice_data_json
+      }));
+    }
+
+    return localDb.prepare(`
       SELECT * FROM watchlist_hits
-      WHERE watchlist_id = ?
+      WHERE watchlist_id = ? AND user_id = ?
       ORDER BY discovered_at DESC
       LIMIT ?
-    `).all(watchlistId, limit);
+    `).all(watchlistId, userId, limit);
   },
-  getAllRecentHits: (limit = 100) => {
-    return db.prepare(`
+
+  getAllRecentHits: async (userId, limit = 100) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlist_hits')
+        .select('*, watchlists(name)')
+        .eq('user_id', userId)
+        .order('discovered_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data || []).map(h => ({
+        ...h,
+        watchlist_name: h.watchlists?.name || 'Bevakning',
+        notice_data_json: typeof h.notice_data_json === 'object' ? JSON.stringify(h.notice_data_json) : h.notice_data_json
+      }));
+    }
+
+    return localDb.prepare(`
       SELECT h.*, w.name as watchlist_name
       FROM watchlist_hits h
       JOIN watchlists w ON h.watchlist_id = w.id
+      WHERE h.user_id = ?
       ORDER BY h.discovered_at DESC
       LIMIT ?
-    `).all(limit);
+    `).all(userId, limit);
   },
-  insertHit: (hit) => {
+
+  insertHit: async (hit) => {
+    if (isSupabaseConfigured) {
+      try {
+        const payload = {
+          id: hit.id,
+          user_id: hit.user_id,
+          watchlist_id: hit.watchlist_id,
+          notice_id: hit.notice_id,
+          notice_data_json: typeof hit.notice_data_json === 'string' ? JSON.parse(hit.notice_data_json) : hit.notice_data_json,
+          is_read: false
+        };
+        const { error } = await supabaseAdmin.from('watchlist_hits').insert(payload);
+        return !error;
+      } catch (e) {
+        return false;
+      }
+    }
+
     try {
-      const stmt = db.prepare(`
-        INSERT OR IGNORE INTO watchlist_hits (id, watchlist_id, notice_id, notice_data_json, is_read, discovered_at)
-        VALUES (?, ?, ?, ?, 0, datetime('now', 'localtime'))
+      const stmt = localDb.prepare(`
+        INSERT OR IGNORE INTO watchlist_hits (id, user_id, watchlist_id, notice_id, notice_data_json, is_read, discovered_at)
+        VALUES (?, ?, ?, ?, ?, 0, datetime('now', 'localtime'))
       `);
-      const result = stmt.run(hit.id, hit.watchlist_id, hit.notice_id, hit.notice_data_json);
+      const result = stmt.run(hit.id, hit.user_id, hit.watchlist_id, hit.notice_id, hit.notice_data_json);
       return result.changes > 0;
     } catch (e) {
       return false;
     }
   },
-  markAsRead: (id) => {
-    const hit = db.prepare('SELECT watchlist_id, is_read FROM watchlist_hits WHERE id = ?').get(id);
+
+  markAsRead: async (id, userId) => {
+    if (isSupabaseConfigured) {
+      const { data: hit } = await supabaseAdmin
+        .from('watchlist_hits')
+        .select('watchlist_id, is_read')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .single();
+      
+      if (hit && !hit.is_read) {
+        await supabaseAdmin.from('watchlist_hits').update({ is_read: true }).eq('id', id).eq('user_id', userId);
+        const { data: wl } = await supabaseAdmin.from('watchlists').select('new_count').eq('id', hit.watchlist_id).single();
+        if (wl) {
+          await supabaseAdmin.from('watchlists').update({ new_count: Math.max(0, (wl.new_count || 1) - 1) }).eq('id', hit.watchlist_id);
+        }
+      }
+      return;
+    }
+
+    const hit = localDb.prepare('SELECT watchlist_id, is_read FROM watchlist_hits WHERE id = ? AND user_id = ?').get(id, userId);
     if (hit && !hit.is_read) {
-      db.prepare('UPDATE watchlist_hits SET is_read = 1 WHERE id = ?').run(id);
-      db.prepare('UPDATE watchlists SET new_count = MAX(0, new_count - 1) WHERE id = ?').run(hit.watchlist_id);
+      localDb.prepare('UPDATE watchlist_hits SET is_read = 1 WHERE id = ? AND user_id = ?').run(id, userId);
+      localDb.prepare('UPDATE watchlists SET new_count = MAX(0, new_count - 1) WHERE id = ?').run(hit.watchlist_id);
     }
   },
-  markAllAsRead: (watchlistId) => {
+
+  markAllAsRead: async (userId, watchlistId) => {
+    if (isSupabaseConfigured) {
+      let query = supabaseAdmin.from('watchlist_hits').update({ is_read: true }).eq('user_id', userId);
+      if (watchlistId) {
+        query = query.eq('watchlist_id', watchlistId);
+        await supabaseAdmin.from('watchlists').update({ new_count: 0 }).eq('id', watchlistId).eq('user_id', userId);
+      } else {
+        await supabaseAdmin.from('watchlists').update({ new_count: 0 }).eq('user_id', userId);
+      }
+      await query;
+      return;
+    }
+
     if (watchlistId) {
-      db.prepare('UPDATE watchlist_hits SET is_read = 1 WHERE watchlist_id = ?').run(watchlistId);
-      db.prepare('UPDATE watchlists SET new_count = 0 WHERE id = ?').run(watchlistId);
+      localDb.prepare('UPDATE watchlist_hits SET is_read = 1 WHERE watchlist_id = ? AND user_id = ?').run(watchlistId, userId);
+      localDb.prepare('UPDATE watchlists SET new_count = 0 WHERE id = ? AND user_id = ?').run(watchlistId, userId);
     } else {
-      db.prepare('UPDATE watchlist_hits SET is_read = 1').run();
-      db.prepare('UPDATE watchlists SET new_count = 0').run();
+      localDb.prepare('UPDATE watchlist_hits SET is_read = 1 WHERE user_id = ?').run(userId);
+      localDb.prepare('UPDATE watchlists SET new_count = 0 WHERE user_id = ?').run(userId);
     }
   },
-  getUnreadCount: () => {
-    const row = db.prepare('SELECT COUNT(*) as count FROM watchlist_hits WHERE is_read = 0').get();
+
+  getUnreadCount: async (userId) => {
+    if (isSupabaseConfigured) {
+      const { count } = await supabaseAdmin
+        .from('watchlist_hits')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+      return count || 0;
+    }
+
+    const row = localDb.prepare('SELECT COUNT(*) as count FROM watchlist_hits WHERE user_id = ? AND is_read = 0').get(userId);
     return row ? row.count : 0;
   }
 };
 
-// Helper methods for saved pipeline tenders
+// ==============================================================================
+// SAVED PIPELINE TENDERS DAO
+// ==============================================================================
 export const pipelineDao = {
-  getAll: () => db.prepare('SELECT * FROM saved_tenders ORDER BY updated_at DESC').all(),
-  getByNoticeId: (noticeId) => db.prepare('SELECT * FROM saved_tenders WHERE notice_id = ?').get(noticeId),
-  save: (item) => {
-    const existing = pipelineDao.getByNoticeId(item.notice_id);
+  getAll: async (userId) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('saved_tenders')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(t => ({
+        ...t,
+        tags_json: typeof t.tags_json === 'object' ? JSON.stringify(t.tags_json) : t.tags_json,
+        notice_data_json: typeof t.notice_data_json === 'object' ? JSON.stringify(t.notice_data_json) : t.notice_data_json,
+        ai_analysis_json: typeof t.ai_analysis_json === 'object' ? JSON.stringify(t.ai_analysis_json) : t.ai_analysis_json
+      }));
+    }
+
+    return localDb.prepare('SELECT * FROM saved_tenders WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
+  },
+
+  getByNoticeId: async (noticeId, userId) => {
+    if (isSupabaseConfigured) {
+      const { data } = await supabaseAdmin
+        .from('saved_tenders')
+        .select('*')
+        .eq('notice_id', noticeId)
+        .eq('user_id', userId)
+        .single();
+      if (!data) return null;
+      return {
+        ...data,
+        tags_json: typeof data.tags_json === 'object' ? JSON.stringify(data.tags_json) : data.tags_json,
+        notice_data_json: typeof data.notice_data_json === 'object' ? JSON.stringify(data.notice_data_json) : data.notice_data_json,
+        ai_analysis_json: typeof data.ai_analysis_json === 'object' ? JSON.stringify(data.ai_analysis_json) : data.ai_analysis_json
+      };
+    }
+
+    return localDb.prepare('SELECT * FROM saved_tenders WHERE notice_id = ? AND user_id = ?').get(noticeId, userId);
+  },
+
+  save: async (item) => {
+    const userId = item.user_id;
+
+    if (isSupabaseConfigured) {
+      const payload = {
+        id: item.id,
+        user_id: userId,
+        notice_id: item.notice_id,
+        title: item.title,
+        buyer: item.buyer,
+        country: item.country,
+        deadline: item.deadline,
+        estimated_value: item.estimated_value,
+        status: item.status || 'INBOX',
+        priority: item.priority || 'MEDIUM',
+        notes: item.notes || '',
+        internal_deadline: item.internal_deadline,
+        assigned_to: item.assigned_to || '',
+        tags_json: typeof item.tags_json === 'string' ? JSON.parse(item.tags_json) : item.tags_json,
+        notice_data_json: typeof item.notice_data_json === 'string' ? JSON.parse(item.notice_data_json) : item.notice_data_json,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('saved_tenders')
+        .upsert(payload, { onConflict: 'user_id, notice_id' })
+        .select()
+        .single();
+
+      if (error) throw error;
+      await supabaseAdmin.from('watchlist_hits').update({ is_saved: true }).eq('notice_id', item.notice_id).eq('user_id', userId);
+      return {
+        ...data,
+        tags_json: JSON.stringify(data.tags_json),
+        notice_data_json: JSON.stringify(data.notice_data_json),
+        ai_analysis_json: data.ai_analysis_json ? JSON.stringify(data.ai_analysis_json) : null
+      };
+    }
+
+    const existing = await pipelineDao.getByNoticeId(item.notice_id, userId);
     if (existing) {
-      db.prepare(`
+      localDb.prepare(`
         UPDATE saved_tenders
         SET title = ?, buyer = ?, country = ?, deadline = ?,
             estimated_value = ?, status = ?, priority = ?,
             notes = ?, internal_deadline = ?, assigned_to = ?,
             tags_json = ?, notice_data_json = ?,
             updated_at = datetime('now', 'localtime')
-        WHERE notice_id = ?
+        WHERE notice_id = ? AND user_id = ?
       `).run(
         item.title, item.buyer, item.country, item.deadline,
         item.estimated_value, item.status, item.priority,
         item.notes, item.internal_deadline, item.assigned_to,
-        item.tags_json, item.notice_data_json, item.notice_id
+        item.tags_json, item.notice_data_json, item.notice_id, userId
       );
-      return pipelineDao.getByNoticeId(item.notice_id);
+      return pipelineDao.getByNoticeId(item.notice_id, userId);
     } else {
-      db.prepare(`
+      localDb.prepare(`
         INSERT INTO saved_tenders (
-          id, notice_id, title, buyer, country, deadline, estimated_value,
+          id, user_id, notice_id, title, buyer, country, deadline, estimated_value,
           status, priority, notes, internal_deadline, assigned_to, tags_json,
           notice_data_json, saved_at, updated_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
           ?, datetime('now', 'localtime'), datetime('now', 'localtime')
         )
       `).run(
-        item.id, item.notice_id, item.title, item.buyer, item.country, item.deadline, item.estimated_value,
+        item.id, userId, item.notice_id, item.title, item.buyer, item.country, item.deadline, item.estimated_value,
         item.status, item.priority, item.notes, item.internal_deadline, item.assigned_to, item.tags_json,
         item.notice_data_json
       );
-      // Also update watchlist_hits flag if exists
-      db.prepare('UPDATE watchlist_hits SET is_saved = 1 WHERE notice_id = ?').run(item.notice_id);
-      return pipelineDao.getByNoticeId(item.notice_id);
+      localDb.prepare('UPDATE watchlist_hits SET is_saved = 1 WHERE notice_id = ? AND user_id = ?').run(item.notice_id, userId);
+      return pipelineDao.getByNoticeId(item.notice_id, userId);
     }
   },
-  updateStatus: (id, status) => {
-    db.prepare(`
+
+  updateStatus: async (id, userId, status) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('saved_tenders')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    localDb.prepare(`
       UPDATE saved_tenders
       SET status = ?, updated_at = datetime('now', 'localtime')
-      WHERE id = ?
-    `).run(status, id);
-    return db.prepare('SELECT * FROM saved_tenders WHERE id = ?').get(id);
+      WHERE id = ? AND user_id = ?
+    `).run(status, id, userId);
+    return localDb.prepare('SELECT * FROM saved_tenders WHERE id = ? AND user_id = ?').get(id, userId);
   },
-  updateNotes: (id, notes, internalDeadline, priority, assignedTo, tagsJson) => {
-    db.prepare(`
+
+  updateNotes: async (id, userId, notes, internalDeadline, priority, assignedTo, tagsJson) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('saved_tenders')
+        .update({
+          notes,
+          internal_deadline: internalDeadline,
+          priority,
+          assigned_to: assignedTo,
+          tags_json: typeof tagsJson === 'string' ? JSON.parse(tagsJson) : tagsJson,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    localDb.prepare(`
       UPDATE saved_tenders
       SET notes = ?, internal_deadline = ?, priority = ?, assigned_to = ?, tags_json = ?,
           updated_at = datetime('now', 'localtime')
-      WHERE id = ?
-    `).run(notes, internalDeadline, priority, assignedTo, tagsJson, id);
-    return db.prepare('SELECT * FROM saved_tenders WHERE id = ?').get(id);
+      WHERE id = ? AND user_id = ?
+    `).run(notes, internalDeadline, priority, assignedTo, tagsJson, id, userId);
+    return localDb.prepare('SELECT * FROM saved_tenders WHERE id = ? AND user_id = ?').get(id, userId);
   },
-  updateAiAnalysis: (noticeId, aiJson) => {
-    db.prepare(`
+
+  updateAiAnalysis: async (noticeId, userId, aiJson) => {
+    if (isSupabaseConfigured) {
+      await supabaseAdmin
+        .from('saved_tenders')
+        .update({
+          ai_analysis_json: typeof aiJson === 'string' ? JSON.parse(aiJson) : aiJson,
+          updated_at: new Date().toISOString()
+        })
+        .eq('notice_id', noticeId)
+        .eq('user_id', userId);
+      return;
+    }
+
+    localDb.prepare(`
       UPDATE saved_tenders
       SET ai_analysis_json = ?, updated_at = datetime('now', 'localtime')
-      WHERE notice_id = ?
-    `).run(aiJson, noticeId);
+      WHERE notice_id = ? AND user_id = ?
+    `).run(aiJson, noticeId, userId);
   },
-  delete: (id) => {
-    const item = db.prepare('SELECT notice_id FROM saved_tenders WHERE id = ?').get(id);
-    if (item) {
-      db.prepare('UPDATE watchlist_hits SET is_saved = 0 WHERE notice_id = ?').run(item.notice_id);
+
+  delete: async (id, userId) => {
+    if (isSupabaseConfigured) {
+      const { data: item } = await supabaseAdmin.from('saved_tenders').select('notice_id').eq('id', id).eq('user_id', userId).single();
+      if (item) {
+        await supabaseAdmin.from('watchlist_hits').update({ is_saved: false }).eq('notice_id', item.notice_id).eq('user_id', userId);
+      }
+      await supabaseAdmin.from('saved_tenders').delete().eq('id', id).eq('user_id', userId);
+      return;
     }
-    return db.prepare('DELETE FROM saved_tenders WHERE id = ?').run(id);
+
+    const item = localDb.prepare('SELECT notice_id FROM saved_tenders WHERE id = ? AND user_id = ?').get(id, userId);
+    if (item) {
+      localDb.prepare('UPDATE watchlist_hits SET is_saved = 0 WHERE notice_id = ? AND user_id = ?').run(item.notice_id, userId);
+    }
+    return localDb.prepare('DELETE FROM saved_tenders WHERE id = ? AND user_id = ?').run(id, userId);
   }
 };
 
-// Helper methods for company profile
+// ==============================================================================
+// COMPANY PROFILE DAO
+// ==============================================================================
 export const profileDao = {
-  get: () => db.prepare('SELECT * FROM company_profile WHERE id = ?').get('default'),
-  update: (data) => {
-    db.prepare(`
-      UPDATE company_profile
-      SET name = ?, description = ?, keywords = ?,
-          preferred_cpv = ?, preferred_countries = ?,
-          min_value = ?, updated_at = datetime('now', 'localtime')
-      WHERE id = 'default'
-    `).run(data.name, data.description, data.keywords, data.preferred_cpv, data.preferred_countries, data.min_value);
-    return profileDao.get();
+  get: async (userId) => {
+    if (isSupabaseConfigured) {
+      const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).single();
+      if (!data) {
+        return {
+          id: userId,
+          name: 'Mitt Företag AB',
+          description: '',
+          keywords: 'IT-konsult, systemutveckling, molntjänster',
+          preferred_cpv: ['72000000', '72200000'],
+          preferred_countries: ['SWE'],
+          min_value: 0
+        };
+      }
+      return {
+        id: data.id,
+        name: data.company_name || 'Mitt Företag AB',
+        description: data.description || '',
+        keywords: data.keywords || '',
+        preferred_cpv: data.preferred_cpv || ['72000000', '72200000'],
+        preferred_countries: data.preferred_countries || ['SWE'],
+        min_value: data.min_value || 0
+      };
+    }
+
+    const row = localDb.prepare('SELECT * FROM profiles WHERE id = ?').get(userId);
+    if (!row) {
+      return {
+        id: userId,
+        name: 'Mitt Företag AB',
+        description: '',
+        keywords: 'IT-konsult, systemutveckling, molntjänster',
+        preferred_cpv: ['72000000', '72200000'],
+        preferred_countries: ['SWE'],
+        min_value: 0
+      };
+    }
+    return {
+      ...row,
+      name: row.company_name || 'Mitt Företag AB',
+      preferred_cpv: JSON.parse(row.preferred_cpv || '[]'),
+      preferred_countries: JSON.parse(row.preferred_countries || '["SWE"]')
+    };
+  },
+
+  update: async (userId, data) => {
+    if (isSupabaseConfigured) {
+      const payload = {
+        company_name: data.name,
+        description: data.description,
+        keywords: data.keywords,
+        preferred_cpv: data.preferred_cpv || [],
+        preferred_countries: data.preferred_countries || ['SWE'],
+        min_value: data.min_value || 0,
+        updated_at: new Date().toISOString()
+      };
+      const { data: updated, error } = await supabaseAdmin
+        .from('profiles')
+        .upsert({ id: userId, ...payload })
+        .select()
+        .single();
+      if (error) throw error;
+      return profileDao.get(userId);
+    }
+
+    localDb.prepare(`
+      INSERT INTO profiles (id, company_name, description, keywords, preferred_cpv, preferred_countries, min_value, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      ON CONFLICT(id) DO UPDATE SET
+        company_name = excluded.company_name,
+        description = excluded.description,
+        keywords = excluded.keywords,
+        preferred_cpv = excluded.preferred_cpv,
+        preferred_countries = excluded.preferred_countries,
+        min_value = excluded.min_value,
+        updated_at = datetime('now', 'localtime')
+    `).run(
+      userId, data.name, data.description, data.keywords,
+      JSON.stringify(data.preferred_cpv || []),
+      JSON.stringify(data.preferred_countries || ['SWE']),
+      data.min_value || 0
+    );
+    return profileDao.get(userId);
   }
 };
 
-// Helper methods for chat history
+// ==============================================================================
+// CHAT MESSAGES DAO
+// ==============================================================================
 export const chatDao = {
-  getMessages: (sessionId = 'default', limit = 50) => {
-    return db.prepare(`
+  getMessages: async (userId, sessionId = 'default', limit = 50) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('chat_messages')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: true })
+        .limit(limit);
+      if (error) throw error;
+      return data || [];
+    }
+
+    return localDb.prepare(`
       SELECT * FROM chat_messages
-      WHERE session_id = ?
+      WHERE user_id = ? AND session_id = ?
       ORDER BY created_at ASC
       LIMIT ?
-    `).all(sessionId, limit);
+    `).all(userId, sessionId, limit);
   },
-  addMessage: (message) => {
-    db.prepare(`
-      INSERT INTO chat_messages (id, session_id, role, content, context_notice_id, created_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `).run(message.id, message.session_id, message.role, message.content, message.context_notice_id);
+
+  addMessage: async (item) => {
+    if (isSupabaseConfigured) {
+      await supabaseAdmin.from('chat_messages').insert({
+        id: item.id,
+        user_id: item.user_id,
+        session_id: item.session_id,
+        role: item.role,
+        content: item.content,
+        context_notice_id: item.context_notice_id
+      });
+      return;
+    }
+
+    localDb.prepare(`
+      INSERT INTO chat_messages (id, user_id, session_id, role, content, context_notice_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+    `).run(item.id, item.user_id, item.session_id, item.role, item.content, item.context_notice_id);
   },
-  clearSession: (sessionId = 'default') => {
-    db.prepare('DELETE FROM chat_messages WHERE session_id = ?').run(sessionId);
+
+  clearSession: async (userId, sessionId = 'default') => {
+    if (isSupabaseConfigured) {
+      await supabaseAdmin.from('chat_messages').delete().eq('user_id', userId).eq('session_id', sessionId);
+      return;
+    }
+
+    localDb.prepare('DELETE FROM chat_messages WHERE user_id = ? AND session_id = ?').run(userId, sessionId);
   }
 };
 
-export default db;
+export default localDb;

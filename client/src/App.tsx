@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { AIChatDrawer } from './components/AIChatDrawer';
 import { TenderDetailModal } from './components/TenderDetailModal';
+import { AuthModal } from './components/AuthModal';
 import { SearchView } from './views/SearchView';
 import { WatchlistsView } from './views/WatchlistsView';
 import { PipelineView } from './views/PipelineView';
 import { CpvAndProfileView } from './views/CpvAndProfileView';
 import { Notice, SavedTender } from './types';
 import { api } from './api';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'search' | 'watchlists' | 'pipeline' | 'cpv-profile'>('search');
@@ -18,6 +20,10 @@ export const App: React.FC = () => {
 
   const [savedTenders, setSavedTenders] = useState<SavedTender[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  // User Auth State
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Active Notice Modal & AI Chat Drawer
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
@@ -34,8 +40,23 @@ export const App: React.FC = () => {
     localStorage.setItem('ted_dark_mode', darkMode.toString());
   }, [darkMode]);
 
+  // Handle Supabase Auth State
   useEffect(() => {
-    loadPipelineAndWatchlists();
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setCurrentUser(session?.user ?? null);
+        loadPipelineAndWatchlists();
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setCurrentUser(session?.user ?? null);
+        loadPipelineAndWatchlists();
+      });
+
+      return () => subscription.unsubscribe();
+    } else {
+      loadPipelineAndWatchlists();
+    }
   }, []);
 
   const loadPipelineAndWatchlists = async () => {
@@ -84,6 +105,8 @@ export const App: React.FC = () => {
         }}
         darkMode={darkMode}
         onToggleDarkMode={handleToggleDarkMode}
+        currentUser={currentUser}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -136,6 +159,15 @@ export const App: React.FC = () => {
         onClose={() => setIsChatOpen(false)}
         currentNotice={noticeForChat}
         onOpenNoticeDetail={handleOpenNoticeDetail}
+      />
+
+      {/* Supabase SSO / Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => {
+          loadPipelineAndWatchlists();
+        }}
       />
     </div>
   );

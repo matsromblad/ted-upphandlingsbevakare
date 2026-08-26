@@ -12,13 +12,15 @@ export async function runWatchlist(watchlist) {
   try {
     let filters = {};
     if (watchlist.filters_json) {
-      filters = JSON.parse(watchlist.filters_json);
+      filters = typeof watchlist.filters_json === 'string'
+        ? JSON.parse(watchlist.filters_json)
+        : watchlist.filters_json;
     }
     if (watchlist.query && !filters.rawQuery) {
       filters.rawQuery = watchlist.query;
     }
 
-    console.log(`[Watchlist Engine] Running watchlist "${watchlist.name}" (ID: ${watchlist.id})`);
+    console.log(`[Watchlist Engine] Running watchlist "${watchlist.name}" (ID: ${watchlist.id}, User: ${watchlist.user_id})`);
     const searchResult = await searchTedNotices(filters, { page: 1, limit: 50 });
 
     if (!searchResult.success) {
@@ -32,19 +34,20 @@ export async function runWatchlist(watchlist) {
     for (const notice of notices) {
       const hit = {
         id: uuidv4(),
+        user_id: watchlist.user_id,
         watchlist_id: watchlist.id,
         notice_id: notice.id || notice.publicationNumber,
         notice_data_json: JSON.stringify(notice)
       };
 
-      const inserted = hitsDao.insertHit(hit);
+      const inserted = await hitsDao.insertHit(hit);
       if (inserted) {
         newHitsCount++;
       }
     }
 
     const now = new Date().toISOString();
-    watchlistDao.updateStats(watchlist.id, now, searchResult.totalCount, newHitsCount);
+    await watchlistDao.updateStats(watchlist.id, now, searchResult.totalCount, newHitsCount);
 
     console.log(`[Watchlist Engine] Watchlist "${watchlist.name}" completed. Total: ${searchResult.totalCount}, New hits: ${newHitsCount}`);
     return {
@@ -59,10 +62,17 @@ export async function runWatchlist(watchlist) {
 }
 
 /**
- * Run all active watchlists
+ * Run active watchlists (either for a single user or system-wide for cron)
  */
-export async function runAllActiveWatchlists() {
-  const watchlists = watchlistDao.getAll().filter(w => w.active);
+export async function runAllActiveWatchlists(userId = null) {
+  let watchlists = [];
+  if (userId) {
+    const userWls = await watchlistDao.getAll(userId);
+    watchlists = userWls.filter(w => w.active);
+  } else {
+    watchlists = await watchlistDao.getAllActiveSystem();
+  }
+
   console.log(`[Watchlist Engine] Polling ${watchlists.length} active watchlists...`);
   
   const results = [];
@@ -85,16 +95,20 @@ export function initScheduler() {
   // Check every 10 minutes according to schedule
   cronTask = cron.schedule('*/10 * * * *', async () => {
     console.log('[Watchlist Cron] Checking watchlists according to schedule...');
-    const watchlists = watchlistDao.getAll().filter(w => w.active);
-    const now = Date.now();
+    try {
+      const watchlists = await watchlistDao.getAllActiveSystem();
+      const now = Date.now();
 
-    for (const wl of watchlists) {
-      const intervalMs = (wl.interval_minutes || 60) * 60 * 1000;
-      const lastRun = wl.last_run_at ? new Date(wl.last_run_at).getTime() : 0;
-      
-      if (now - lastRun >= intervalMs) {
-        await runWatchlist(wl);
+      for (const wl of watchlists) {
+        const intervalMs = (wl.interval_minutes || 60) * 60 * 1000;
+        const lastRun = wl.last_run_at ? new Date(wl.last_run_at).getTime() : 0;
+        
+        if (now - lastRun >= intervalMs) {
+          await runWatchlist(wl);
+        }
       }
+    } catch (err) {
+      console.error('[Watchlist Cron] Scheduled run error:', err);
     }
   });
 
