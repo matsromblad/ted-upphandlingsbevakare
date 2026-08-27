@@ -52,6 +52,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [selectedCpvs, setSelectedCpvs] = useState<string[]>([]);
   const [formType, setFormType] = useState<FormType>('competition');
   const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [onlyActive, setOnlyActive] = useState<boolean>(true);
   const [rawQuery, setRawQuery] = useState('');
   const [showExpertMode, setShowExpertMode] = useState(false);
 
@@ -97,6 +98,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
       cpv: selectedCpvs.length > 0 ? selectedCpvs : undefined,
       formType,
       datePreset,
+      onlyActive,
       rawQuery: showExpertMode && rawQuery.trim() ? rawQuery.trim() : undefined
     };
   };
@@ -152,7 +154,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
           cpv: f.cpv,
           countries: f.countries,
           formType: f.formType,
-          datePreset: f.datePreset
+          datePreset: f.datePreset,
+          onlyActive
         };
         const searchRes = await api.searchTed(searchFilters, 1, 20);
         if (searchRes.success) {
@@ -420,7 +423,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-medium"
             >
-              <option value="all">Alla datum (alla aktiva)</option>
+              <option value="all">Alla datum (endast aktiva)</option>
               <option value="1d">Senaste 24 timmarna</option>
               <option value="7d">Senaste 7 dagarna</option>
               <option value="14d">Senaste 14 dagarna</option>
@@ -431,7 +434,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         </div>
 
-        {/* Country Selector Pills */}
+        {/* Country Selector Pills & Active Only Toggle */}
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-semibold text-slate-500 mr-1">Geografi:</span>
@@ -465,7 +468,17 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300 select-none">
+              <input
+                type="checkbox"
+                checked={onlyActive}
+                onChange={(e) => setOnlyActive(e.target.checked)}
+                className="w-4 h-4 rounded text-ted-600 focus:ring-ted-500 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer"
+              />
+              <span>Endast aktiva (dölj utgångna)</span>
+            </label>
+
             <button
               onClick={() => setIsWatchlistModalOpen(true)}
               className="px-3.5 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs font-semibold transition-all flex items-center gap-1.5"

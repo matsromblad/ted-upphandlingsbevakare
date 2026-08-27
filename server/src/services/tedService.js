@@ -171,11 +171,22 @@ export function buildExpertQuery(filters = {}) {
     parts.push(`publication-date >= ${dateStr}`);
   }
 
-  if (parts.length === 0) {
-    return '(buyer-country IN (SWE) OR place-of-performance IN (SWE))';
+  // Active deadline filter: ensure only non-expired notices are returned when onlyActive is requested or when searching competitions
+  const isCompetition = !filters.formType || filters.formType === 'competition';
+  const shouldFilterOnlyActive = filters.onlyActive === true || (filters.onlyActive !== false && filters.includeExpired !== true && isCompetition);
+
+  if (shouldFilterOnlyActive) {
+    parts.push('deadline-receipt-tender-date-lot >= today(0)');
   }
 
-  return parts.join(' AND ');
+  let finalQuery = parts.length > 0 ? parts.join(' AND ') : '(buyer-country IN (SWE) OR place-of-performance IN (SWE))';
+
+  // Automatically add sort by publication-date DESC if not already present
+  if (!finalQuery.includes('SORT BY') && !finalQuery.includes('publication-number =')) {
+    finalQuery += ' SORT BY publication-date DESC';
+  }
+
+  return finalQuery;
 }
 
 export function parseTedDate(str) {
@@ -401,7 +412,14 @@ export async function searchTedNotices(filters = {}, pagination = { page: 1, lim
     }
 
     const rawNotices = data.notices || [];
-    const normalized = rawNotices.map(normalizeNotice).filter(Boolean);
+    let normalized = rawNotices.map(normalizeNotice).filter(Boolean);
+
+    const isCompetition = !filters.formType || filters.formType === 'competition';
+    const shouldFilterOnlyActive = filters.onlyActive === true || (filters.onlyActive !== false && filters.includeExpired !== true && isCompetition);
+
+    if (shouldFilterOnlyActive) {
+      normalized = normalized.filter(n => n.deadlineStatus !== 'EXPIRED');
+    }
 
     return {
       success: true,

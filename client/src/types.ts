@@ -45,6 +45,8 @@ export interface NoticeFilters {
   datePreset?: DatePreset;
   dateFrom?: string;
   rawQuery?: string;
+  onlyActive?: boolean;
+  includeExpired?: boolean;
 }
 
 export interface Watchlist {
