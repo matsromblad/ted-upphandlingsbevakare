@@ -3,6 +3,7 @@ import { Navbar } from './components/Navbar';
 import { AIChatDrawer } from './components/AIChatDrawer';
 import { TenderDetailModal } from './components/TenderDetailModal';
 import { AuthModal } from './components/AuthModal';
+import { AboutModal } from './components/AboutModal';
 import { SearchView } from './views/SearchView';
 import { WatchlistsView } from './views/WatchlistsView';
 import { PipelineView } from './views/PipelineView';
@@ -10,6 +11,7 @@ import { CpvAndProfileView } from './views/CpvAndProfileView';
 import { Notice, SavedTender } from './types';
 import { api } from './api';
 import { supabase, isSupabaseConfigured, subscribeSupabaseConfig, ensureSupabaseClient } from './supabaseClient';
+import { Building2, ExternalLink, Code2, Heart, Info, Sparkles } from 'lucide-react';
 
 function getInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
@@ -39,6 +41,7 @@ export const App: React.FC = () => {
   // User Auth State
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
 
   // Active Notice Modal & AI Chat Drawer
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
@@ -138,6 +141,7 @@ export const App: React.FC = () => {
         onToggleDarkMode={handleToggleDarkMode}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenAbout={() => setIsAboutModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -175,6 +179,56 @@ export const App: React.FC = () => {
           <CpvAndProfileView />
         )}
       </main>
+
+      {/* Global Footer */}
+      <footer className="mt-12 border-t border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white font-bold text-[10px]">
+              TED
+            </div>
+            <span>
+              <strong>TED Upphandlingsbevakare</strong> • Skapad av <strong>Mats Römblad</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsAboutModalOpen(true)}
+              className="hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1 font-medium"
+            >
+              <Info className="w-3.5 h-3.5 text-ted-600 dark:text-ted-400" />
+              Om appen
+            </button>
+
+            <a
+              href="https://ted.europa.eu/sv/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1"
+            >
+              <ExternalLink className="w-3 h-3 text-slate-400" />
+              ted.europa.eu
+            </a>
+
+            <a
+              href="https://github.com/matsromblad/ted-upphandlingsbevakare"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1"
+            >
+              <Code2 className="w-3.5 h-3.5 text-slate-400" />
+              GitHub
+            </a>
+          </div>
+        </div>
+      </footer>
+
+      {/* About App Modal */}
+      <AboutModal
+        isOpen={isAboutModalOpen}
+        onClose={() => setIsAboutModalOpen(false)}
+      />
 
       {/* Tender Detail Modal */}
       <TenderDetailModal

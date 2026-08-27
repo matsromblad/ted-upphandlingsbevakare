@@ -11,7 +11,8 @@ import {
   User,
   LogOut,
   LogIn,
-  ChevronDown
+  ChevronDown,
+  Info
 } from 'lucide-react';
 import { signOut, isSupabaseConfigured } from '../supabaseClient';
 
@@ -25,6 +26,7 @@ interface NavbarProps {
   onToggleDarkMode: () => void;
   currentUser: any | null;
   onOpenAuth: () => void;
+  onOpenAbout: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,7 +38,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   onToggleDarkMode,
   currentUser,
-  onOpenAuth
+  onOpenAuth,
+  onOpenAbout
 }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -132,6 +135,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               <FileText className="w-4 h-4" />
               CPV & Företagsprofil
             </button>
+
+            <button
+              onClick={onOpenAbout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
+              title="Om appen och dess skapare"
+            >
+              <Info className="w-4 h-4 text-ted-600 dark:text-ted-400" />
+              Om
+            </button>
           </nav>
 
           {/* Right Action buttons: AI Chat, Auth & Theme Toggle */}
@@ -180,6 +192,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <User className="w-3.5 h-3.5 text-slate-400" />
                       Min företagsprofil
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onOpenAbout();
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <Info className="w-3.5 h-3.5 text-ted-600 dark:text-ted-400" />
+                      Om TED Bevakare
                     </button>
 
                     <button
@@ -242,6 +265,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <FileText className="w-4 h-4" />
             Profil
+          </button>
+          <button
+            onClick={onOpenAbout}
+            className="flex flex-col items-center gap-1 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white"
+          >
+            <Info className="w-4 h-4" />
+            Om
           </button>
         </div>
       </div>
