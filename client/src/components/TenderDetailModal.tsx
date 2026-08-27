@@ -55,6 +55,18 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
   const savedItem = notice ? savedTenders.find(t => t.notice_id === notice.id) : null;
 
+  // Deduplicate CPV codes for display
+  const uniqueCpvDetails = React.useMemo(() => {
+    if (!notice?.cpvDetails) return [];
+    const seen = new Set<string>();
+    return notice.cpvDetails.filter(cpv => {
+      if (!cpv || !cpv.code) return false;
+      if (seen.has(cpv.code)) return false;
+      seen.add(cpv.code);
+      return true;
+    });
+  }, [notice?.cpvDetails]);
+
   useEffect(() => {
     if (notice) {
       if (savedItem) {
@@ -315,26 +327,26 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
             <div className="space-y-6">
               {/* Description Section */}
               <div className="space-y-2">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Beskrivning av upphandlingen</h3>
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Beskrivning av upphandlingen</h3>
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-sm text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed shadow-sm">
                   {notice.description || 'Ingen fullständig beskrivningstext tillgänglig i TED:s indexfält för detta meddelande. Se officiella TED-länkar ovan för komplett förfrågningsunderlag.'}
                 </div>
               </div>
 
               {/* CPV Codes */}
-              {notice.cpvDetails && notice.cpvDetails.length > 0 && (
+              {uniqueCpvDetails.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">CPV-koder (Klassificering)</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {notice.cpvDetails.map((cpv, idx) => (
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">CPV-koder (Klassificering)</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {uniqueCpvDetails.map((cpv, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 flex items-start gap-2.5"
+                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 flex items-start gap-2.5 shadow-sm"
                       >
-                        <Tag className="w-4 h-4 text-ted-600 flex-shrink-0 mt-0.5" />
+                        <Tag className="w-4 h-4 text-ted-600 dark:text-ted-400 flex-shrink-0 mt-0.5" />
                         <div>
-                          <span className="text-xs font-mono font-bold text-ted-700 dark:text-ted-400">{cpv.code}</span>
-                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium">{cpv.label}</p>
+                          <span className="text-xs font-mono font-bold text-ted-700 dark:text-ted-300">{cpv.code}</span>
+                          <p className="text-xs text-slate-800 dark:text-slate-200 font-medium leading-snug">{cpv.label}</p>
                         </div>
                       </div>
                     ))}
@@ -344,17 +356,17 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
               {/* Authority & Procurement Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Upphandlande Myndighet</h4>
+                <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 shadow-sm">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Upphandlande Myndighet</h4>
                   <div className="text-sm space-y-1">
                     <p className="font-semibold text-slate-900 dark:text-white">{notice.buyer}</p>
-                    {notice.city && <p className="text-slate-600 dark:text-slate-400">{notice.city}, {notice.country}</p>}
+                    {notice.city && <p className="text-slate-600 dark:text-slate-300">{notice.city}, {notice.country}</p>}
                     {notice.links?.buyerProfile && (
                       <a
                         href={notice.links.buyerProfile}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-ted-600 hover:underline flex items-center gap-1 pt-1"
+                        className="text-xs text-ted-600 dark:text-ted-400 hover:underline flex items-center gap-1 pt-1"
                       >
                         <ExternalLink className="w-3 h-3" /> Köparprofil
                       </a>
@@ -362,19 +374,19 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Viktiga Datum & Status</h4>
+                <div className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 shadow-sm">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Viktiga Datum & Status</h4>
                   <div className="text-sm space-y-1.5">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Publicerad:</span>
+                      <span className="text-slate-500 dark:text-slate-400">Publicerad:</span>
                       <span className="font-medium text-slate-900 dark:text-white">{notice.publicationDate || '-'}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Sista anbudsdag:</span>
+                      <span className="text-slate-500 dark:text-slate-400">Sista anbudsdag:</span>
                       <span className="font-bold text-slate-900 dark:text-white">{notice.deadline || 'Ej angiven'}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Dagar kvar:</span>
+                      <span className="text-slate-500 dark:text-slate-400">Dagar kvar:</span>
                       <span className="font-medium text-slate-900 dark:text-white">
                         {notice.daysRemaining !== null ? `${notice.daysRemaining} dagar` : '-'}
                       </span>
@@ -448,8 +460,8 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
                   {/* Summary */}
                   <div className="space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sammanfattning</h4>
-                    <p className="text-sm text-slate-800 dark:text-slate-200 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 leading-relaxed">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Sammanfattning</h4>
+                    <p className="text-sm text-slate-800 dark:text-slate-100 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 leading-relaxed shadow-sm">
                       {aiAnalysis.summary}
                     </p>
                   </div>
@@ -458,14 +470,14 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Key Requirements */}
                     <div className="space-y-2">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         Viktiga krav & Kvalificering
                       </h4>
                       <ul className="space-y-1.5">
                         {aiAnalysis.keyRequirements?.map((req, idx) => (
-                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-slate-800 dark:text-slate-200 flex items-start gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mt-1.5 flex-shrink-0" />
+                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-slate-800 dark:text-slate-100 flex items-start gap-2 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
                             <span>{req}</span>
                           </li>
                         ))}
@@ -474,14 +486,14 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
                     {/* Opportunities */}
                     <div className="space-y-2">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         Möjligheter & Fördelar
                       </h4>
                       <ul className="space-y-1.5">
                         {aiAnalysis.opportunities?.map((opp, idx) => (
-                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 text-slate-800 dark:text-slate-200 flex items-start gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 flex-shrink-0" />
+                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-slate-800 dark:text-slate-100 flex items-start gap-2 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 mt-1.5 flex-shrink-0" />
                             <span>{opp}</span>
                           </li>
                         ))}
@@ -498,8 +510,8 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                       </h4>
                       <ul className="space-y-1.5">
                         {aiAnalysis.risksAndChallenges.map((risk, idx) => (
-                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-amber-50/50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-slate-800 dark:text-slate-200 flex items-start gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5 flex-shrink-0" />
+                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-slate-800 dark:text-slate-100 flex items-start gap-2 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 dark:bg-amber-400 mt-1.5 flex-shrink-0" />
                             <span>{risk}</span>
                           </li>
                         ))}
@@ -514,7 +526,7 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                         <Sparkles className="w-4 h-4" />
                         Rekommenderad Anbudsstrategi
                       </h4>
-                      <div className="text-xs p-3.5 rounded-xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/50 text-slate-800 dark:text-slate-200 leading-relaxed">
+                      <div className="text-xs p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/60 text-slate-800 dark:text-slate-100 leading-relaxed shadow-sm">
                         {aiAnalysis.recommendedBidStrategy}
                       </div>
                     </div>
@@ -523,14 +535,14 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                   {/* Questions for Clarification */}
                   {aiAnalysis.clarificationQuestions && aiAnalysis.clarificationQuestions.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <HelpCircle className="w-4 h-4 text-ted-600" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <HelpCircle className="w-4 h-4 text-ted-600 dark:text-ted-400" />
                         Förslag på frågor att ställa till upphandlaren
                       </h4>
                       <ul className="space-y-1.5">
                         {aiAnalysis.clarificationQuestions.map((q, idx) => (
-                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 flex items-start gap-2">
-                            <span className="font-bold text-ted-600">{idx + 1}.</span>
+                          <li key={idx} className="text-xs p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 flex items-start gap-2 shadow-sm">
+                            <span className="font-bold text-ted-600 dark:text-ted-400">{idx + 1}.</span>
                             <span>{q}</span>
                           </li>
                         ))}
@@ -548,11 +560,11 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Status selector */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Pipeline Status</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Pipeline Status</label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as TenderStatus)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
                   >
                     <option value="INBOX">📥 Bevakad / Inbox</option>
                     <option value="REVIEWING">🔍 Granskas / Utvärdering</option>
@@ -567,11 +579,11 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
                 {/* Priority selector */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Prioritet</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Prioritet</label>
                   <select
                     value={priority}
                     onChange={(e) => setPriority(e.target.value as Priority)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
                   >
                     <option value="LOW">Låg</option>
                     <option value="MEDIUM">Medel</option>
@@ -582,37 +594,37 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
                 {/* Internal Deadline */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Intern Deadline (Frågor/Utkast)</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Intern Deadline (Frågor/Utkast)</label>
                   <input
                     type="date"
                     value={internalDeadline}
                     onChange={(e) => setInternalDeadline(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
                   />
                 </div>
 
                 {/* Assigned To */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Ansvarig person</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ansvarig person</label>
                   <input
                     type="text"
                     value={assignedTo}
                     onChange={(e) => setAssignedTo(e.target.value)}
                     placeholder="t.ex. Anna Svensson"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-ted-500"
                   />
                 </div>
               </div>
 
               {/* Notes */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Interna anteckningar & Checklista</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Interna anteckningar & Checklista</label>
                 <textarea
                   rows={5}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Skriv interna kommentarer, datum för frågestund, underleverantörer, prisstrategi..."
-                  className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-ted-500"
+                  className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-ted-500"
                 />
               </div>
 

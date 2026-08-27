@@ -1,12 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const initialUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const initialKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+export let supabase: SupabaseClient | null = (initialUrl && initialKey)
+  ? createClient(initialUrl, initialKey, {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
@@ -15,13 +13,58 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+export let isSupabaseConfigured = Boolean(supabase);
+
+const configListeners = new Set<(configured: boolean) => void>();
+
+export function subscribeSupabaseConfig(listener: (configured: boolean) => void) {
+  configListeners.add(listener);
+  listener(isSupabaseConfigured);
+  return () => {
+    configListeners.delete(listener);
+  };
+}
+
+export async function ensureSupabaseClient(): Promise<SupabaseClient | null> {
+  if (supabase) {
+    return supabase;
+  }
+
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    if (data.supabaseUrl && data.supabaseAnonKey) {
+      supabase = createClient(data.supabaseUrl, data.supabaseAnonKey, {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true
+        }
+      });
+      isSupabaseConfigured = true;
+      configListeners.forEach((fn) => fn(true));
+      return supabase;
+    }
+  } catch (e) {
+    console.warn('[Supabase Client] Failed to fetch config from backend:', e);
+  }
+
+  return null;
+}
+
+// Automatically attempt runtime init on load
+if (!supabase) {
+  ensureSupabaseClient();
+}
+
 /**
  * Get current user access token to attach to API requests
  */
 export async function getAccessToken(): Promise<string | null> {
-  if (!supabase) return null;
+  const client = await ensureSupabaseClient();
+  if (!client) return null;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await client.auth.getSession();
     return session?.access_token || null;
   } catch (e) {
     return null;
@@ -32,8 +75,9 @@ export async function getAccessToken(): Promise<string | null> {
  * SSO Login with Google
  */
 export async function signInWithGoogle() {
-  if (!supabase) throw new Error('Supabase är inte konfigurerat');
-  return supabase.auth.signInWithOAuth({
+  const client = await ensureSupabaseClient();
+  if (!client) throw new Error('Supabase är inte konfigurerat');
+  return client.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: window.location.origin
@@ -45,8 +89,9 @@ export async function signInWithGoogle() {
  * SSO Login with GitHub
  */
 export async function signInWithGithub() {
-  if (!supabase) throw new Error('Supabase är inte konfigurerat');
-  return supabase.auth.signInWithOAuth({
+  const client = await ensureSupabaseClient();
+  if (!client) throw new Error('Supabase är inte konfigurerat');
+  return client.auth.signInWithOAuth({
     provider: 'github',
     options: {
       redirectTo: window.location.origin
@@ -58,16 +103,18 @@ export async function signInWithGithub() {
  * Email & Password sign in
  */
 export async function signInWithPassword(email: string, password: string) {
-  if (!supabase) throw new Error('Supabase är inte konfigurerat');
-  return supabase.auth.signInWithPassword({ email, password });
+  const client = await ensureSupabaseClient();
+  if (!client) throw new Error('Supabase är inte konfigurerat');
+  return client.auth.signInWithPassword({ email, password });
 }
 
 /**
  * Email & Password sign up
  */
 export async function signUpWithPassword(email: string, password: string, fullName = '') {
-  if (!supabase) throw new Error('Supabase är inte konfigurerat');
-  return supabase.auth.signUp({
+  const client = await ensureSupabaseClient();
+  if (!client) throw new Error('Supabase är inte konfigurerat');
+  return client.auth.signUp({
     email,
     password,
     options: {
@@ -80,6 +127,7 @@ export async function signUpWithPassword(email: string, password: string, fullNa
  * Sign out
  */
 export async function signOut() {
-  if (!supabase) return;
-  return supabase.auth.signOut();
+  const client = await ensureSupabaseClient();
+  if (!client) return;
+  return client.auth.signOut();
 }

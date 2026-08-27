@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Building2, Lock, Mail, User, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import {
   signInWithGoogle,
   signInWithGithub,
   signInWithPassword,
   signUpWithPassword,
-  isSupabaseConfigured
+  isSupabaseConfigured,
+  subscribeSupabaseConfig,
+  ensureSupabaseClient
 } from '../supabaseClient';
 
 interface AuthModalProps {
@@ -19,6 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onSuccess
 }) => {
+  const [configured, setConfigured] = useState(isSupabaseConfigured);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,6 +29,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeSupabaseConfig((isConf) => {
+      setConfigured(isConf);
+    });
+    if (isOpen) {
+      ensureSupabaseClient();
+    }
+    return unsubscribe;
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -102,7 +115,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Not configured info note */}
-        {!isSupabaseConfigured && (
+        {!configured && (
           <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-200 space-y-1">
             <p className="font-bold">Lokal utveckling (Offline)</p>
             <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
@@ -131,7 +144,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="button"
             onClick={() => handleOAuthLogin('google')}
-            disabled={loading || !isSupabaseConfigured}
+            disabled={loading || !configured}
             className="w-full py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50 shadow-sm"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -146,7 +159,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="button"
             onClick={() => handleOAuthLogin('github')}
-            disabled={loading || !isSupabaseConfigured}
+            disabled={loading || !configured}
             className="w-full py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50 shadow-sm"
           >
             <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
@@ -214,7 +227,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <button
             type="submit"
-            disabled={loading || !isSupabaseConfigured}
+            disabled={loading || !configured}
             className="w-full py-3 rounded-xl bg-ted-600 hover:bg-ted-700 text-white font-bold text-sm shadow-md shadow-ted-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? (

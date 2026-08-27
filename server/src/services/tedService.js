@@ -229,10 +229,11 @@ export function normalizeNotice(notice) {
   if (Array.isArray(rawCountry)) country = rawCountry[0];
   else if (typeof rawCountry === 'string') country = rawCountry;
 
-  // CPV codes
+  // CPV codes (deduplicated)
   const rawCpvs = notice['classification-cpv'] || [];
-  const cpvList = Array.isArray(rawCpvs) ? rawCpvs : [rawCpvs];
-  const cpvDetails = cpvList.map(code => ({
+  const rawCpvArray = Array.isArray(rawCpvs) ? rawCpvs : [rawCpvs];
+  const uniqueCpvs = [...new Set(rawCpvArray.map(c => typeof c === 'string' ? c.trim() : String(c)).filter(Boolean))];
+  const cpvDetails = uniqueCpvs.map(code => ({
     code,
     label: getCpvLabel(code)
   }));

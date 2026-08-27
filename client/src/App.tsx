@@ -9,7 +9,7 @@ import { PipelineView } from './views/PipelineView';
 import { CpvAndProfileView } from './views/CpvAndProfileView';
 import { Notice, SavedTender } from './types';
 import { api } from './api';
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { supabase, isSupabaseConfigured, subscribeSupabaseConfig, ensureSupabaseClient } from './supabaseClient';
 
 function getInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
@@ -57,21 +57,37 @@ export const App: React.FC = () => {
 
   // Handle Supabase Auth State
   useEffect(() => {
-    if (supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    const setupAuth = async () => {
+      const client = await ensureSupabaseClient();
+      if (client) {
+        const { data: { session } } = await client.auth.getSession();
         setCurrentUser(session?.user ?? null);
         loadPipelineAndWatchlists();
-      });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setCurrentUser(session?.user ?? null);
+        const { data } = client.auth.onAuthStateChange((_event, session) => {
+          setCurrentUser(session?.user ?? null);
+          loadPipelineAndWatchlists();
+        });
+        subscription = data.subscription;
+      } else {
         loadPipelineAndWatchlists();
-      });
+      }
+    };
 
-      return () => subscription.unsubscribe();
-    } else {
-      loadPipelineAndWatchlists();
-    }
+    setupAuth();
+
+    const unsubscribeConfig = subscribeSupabaseConfig((configured) => {
+      if (configured) {
+        setupAuth();
+      }
+    });
+
+    return () => {
+      if (subscription) (subscription as any).unsubscribe();
+      unsubscribeConfig();
+    };
   }, []);
 
   const loadPipelineAndWatchlists = async () => {

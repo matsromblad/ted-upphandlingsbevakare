@@ -7,7 +7,7 @@ import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerServi
 import { buildWatchlistManageUrl } from '../services/emailService.js';
 import { CPV_CATEGORIES, searchCpv } from '../services/cpvData.js';
 import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao } from '../db.js';
-import { requireAuth } from '../supabase.js';
+import { requireAuth, isSupabaseConfigured, isPlaceholder } from '../supabase.js';
 
 const router = express.Router();
 const VALID_EMAIL_FREQUENCIES = new Set(['daily', 'weekly']);
@@ -57,6 +57,17 @@ function renderUnsubscribeHtml(title, message, manageUrl = '') {
 // ==========================================
 // 1. TED Search & Exploration (Open / Public)
 // ==========================================
+
+router.get('/config', (req, res) => {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+  res.json({
+    success: true,
+    supabaseUrl: !isPlaceholder(supabaseUrl) ? supabaseUrl : '',
+    supabaseAnonKey: !isPlaceholder(supabaseAnonKey) ? supabaseAnonKey : '',
+    isSupabaseConfigured
+  });
+});
 
 router.post('/ted/search', async (req, res) => {
   try {
