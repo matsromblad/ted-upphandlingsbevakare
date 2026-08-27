@@ -593,13 +593,17 @@ router.get('/export/:type', requireAuth, async (req, res) => {
         'Titel': t.title,
         'Upphandlare': t.buyer,
         'Land': t.country,
+        'Uppskattat värde': t.estimated_value || notice.estimatedValue || '',
+        'Portal': notice.portalName || notice.links?.portalName || '',
         'Status': t.status,
         'Prioritet': t.priority,
         'Sista anbudsdag': t.deadline || '',
         'Intern deadline': t.internal_deadline || '',
         'Ansvarig': t.assigned_to || '',
         'Anteckningar': t.notes || '',
-        'TED Länk': notice.links?.tedHtml || ''
+        'Anbudslänk (Portal)': notice.links?.submission || '',
+        'Dokumentlänk': notice.links?.documents || '',
+        'Officiell TED Länk': notice.links?.tedHtml || ''
       };
     });
   } else if (type === 'hits') {
@@ -611,9 +615,13 @@ router.get('/export/:type', requireAuth, async (req, res) => {
         'TED ID': h.notice_id,
         'Titel': notice.title,
         'Upphandlare': notice.buyer,
+        'Uppskattat värde': notice.estimatedValue || '',
+        'Portal': notice.portalName || notice.links?.portalName || '',
         'Sista anbudsdag': notice.deadline || '',
         'Upptäckt datum': h.discovered_at,
-        'TED Länk': notice.links?.tedHtml || ''
+        'Anbudslänk': notice.links?.submission || '',
+        'Dokumentlänk': notice.links?.documents || '',
+        'Officiell TED Länk': notice.links?.tedHtml || ''
       };
     });
   }

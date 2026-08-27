@@ -11,7 +11,10 @@ import {
   CheckCircle2,
   ChevronRight,
   User,
-  Plus
+  Plus,
+  Coins,
+  Globe2,
+  ExternalLink
 } from 'lucide-react';
 import { SavedTender, TenderStatus, Notice } from '../types';
 import { api } from '../api';
@@ -179,13 +182,20 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                       >
                         {/* Top tags */}
                         <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] font-mono text-slate-500">
-                            {tender.notice_id}
-                          </span>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-[10px] font-mono text-slate-500">
+                              {tender.notice_id}
+                            </span>
+                            {notice.portalName && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                                {notice.portalName}
+                              </span>
+                            )}
+                          </div>
 
                           {/* Priority badge */}
                           <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
                               tender.priority === 'URGENT'
                                 ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
                                 : tender.priority === 'HIGH'
@@ -202,10 +212,19 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                           {tender.title}
                         </h4>
 
-                        {/* Buyer */}
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
-                          <Building className="w-3 h-3 flex-shrink-0 text-ted-600" />
-                          <span className="truncate">{tender.buyer}</span>
+                        {/* Buyer & Value */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate">
+                            <Building className="w-3 h-3 flex-shrink-0 text-ted-600" />
+                            <span className="truncate">{tender.buyer}</span>
+                          </div>
+
+                          {(notice.estimatedValueFormatted || tender.estimated_value) && (
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                              <Coins className="w-3 h-3 text-emerald-600" />
+                              <span>{notice.estimatedValueFormatted || tender.estimated_value}</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Deadline */}

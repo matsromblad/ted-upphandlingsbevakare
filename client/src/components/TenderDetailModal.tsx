@@ -17,15 +17,19 @@ import {
   Save,
   Loader2,
   HelpCircle,
+  Coins,
   TrendingUp,
   ShieldAlert,
-  ListOrdered,
   Users,
-  Coins,
   CalendarRange,
   Scale,
   CheckSquare,
-  FileCheck2
+  FileCheck2,
+  FileDown,
+  Copy,
+  Check,
+  Globe2,
+  FolderOpen
 } from 'lucide-react';
 import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole } from '../types';
 import { api } from '../api';
@@ -53,6 +57,7 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   // Internal state
   const [notes, setNotes] = useState('');
@@ -97,6 +102,12 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   }, [notice, savedItem]);
 
   if (!isOpen || !notice) return null;
+
+  const handleCopyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(url);
+    setTimeout(() => setCopiedUrl(null), 2500);
+  };
 
   const handleSaveToPipeline = async () => {
     setSaving(true);
@@ -174,6 +185,10 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
     );
   };
 
+  // Primary tender portal / submission link
+  const tenderPortalUrl = notice.links?.submission || notice.links?.documents;
+  const portalName = notice.portalName || notice.links?.portalName;
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 sm:p-6 lg:p-8">
       {/* Backdrop */}
@@ -197,6 +212,17 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 uppercase">
                   {notice.formType}
                 </span>
+                {portalName && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
+                    <Globe2 className="w-3 h-3" /> {portalName}
+                  </span>
+                )}
+                {notice.estimatedValueFormatted && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1" title={notice.estimatedValue}>
+                    <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    {notice.estimatedValueFormatted}
+                  </span>
+                )}
                 {getDeadlineBadge()}
               </div>
 
@@ -233,8 +259,8 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
           </div>
 
           {/* Quick Action Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-slate-200/80 dark:border-slate-800">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleSaveToPipeline}
                 disabled={saving}
@@ -260,8 +286,30 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
               </button>
             </div>
 
-            {/* External Links */}
-            <div className="flex items-center gap-2">
+            {/* External Links & Direct Actions */}
+            <div className="flex flex-wrap items-center gap-2">
+              {tenderPortalUrl && (
+                <a
+                  href={tenderPortalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {portalName ? `Lämna anbud (${portalName})` : 'Lämna anbud / Portal'}
+                </a>
+              )}
+              {notice.links?.documents && notice.links.documents !== tenderPortalUrl && (
+                <a
+                  href={notice.links.documents}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-300"
+                >
+                  <FileDown className="w-3.5 h-3.5 text-blue-600" />
+                  Dokument
+                </a>
+              )}
               {notice.links?.tedHtml && (
                 <a
                   href={notice.links.tedHtml}
@@ -349,6 +397,298 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              
+              {/* External Links & Tender Access Hub */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Globe2 className="w-4 h-4 text-ted-600" />
+                    Länkar till anbud, dokument & portaler
+                  </h3>
+                  {portalName && (
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                      Upphandlingssystem: <strong>{portalName}</strong>
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Primary Tender Submission / Portal Link */}
+                  {tenderPortalUrl ? (
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50/80 to-indigo-50/80 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Anbudsinlämning & Förfrågan
+                          </span>
+                          {portalName && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                              {portalName}
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          {portalName ? `Lämna anbud i ${portalName}` : 'Gå till extern anbudsförfrågan'}
+                        </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 line-clamp-2 break-all font-mono text-[11px]">
+                          {tenderPortalUrl}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-blue-200/60 dark:border-blue-800/60">
+                        <a
+                          href={tenderPortalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 text-center flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Öppna anbudsförfrågan
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLink(tenderPortalUrl)}
+                          className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 text-xs font-semibold transition-all"
+                          title="Kopiera länk"
+                        >
+                          {copiedUrl === tenderPortalUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Anbudslänk</span>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Ingen direkt extern inlämningslänk angiven i TED-index. Se officiell TED-kungörelse för instruktioner.
+                        </p>
+                      </div>
+                      {notice.links?.tedHtml && (
+                        <a
+                          href={notice.links.tedHtml}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 inline-flex items-center justify-center gap-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Öppna TED-kungörelse
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Documents / Förfrågningsunderlag or Secondary Link */}
+                  {notice.links?.documents ? (
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/80 to-teal-50/80 dark:from-emerald-950/40 dark:to-teal-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                            <FileDown className="w-3.5 h-3.5" />
+                            Förfrågningsunderlag
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                            Dokument
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          Hämta upphandlingsdokument
+                        </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 line-clamp-2 break-all font-mono text-[11px]">
+                          {notice.links.documents}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                        <a
+                          href={notice.links.documents}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 text-center flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          Öppna dokumentlänk
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLink(notice.links!.documents!)}
+                          className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-slate-700 text-xs font-semibold transition-all"
+                          title="Kopiera länk"
+                        >
+                          {copiedUrl === notice.links.documents ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* TED Official Notice Box */
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Officiell TED (EU)
+                          </span>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                            {notice.publicationNumber}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          Officiellt kungörelsemeddelande
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Se den fullständiga officiella kungörelsen på svenska via TED Europa.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                        {notice.links?.tedHtml && (
+                          <a
+                            href={notice.links.tedHtml}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 px-3 py-2 rounded-xl bg-ted-600 hover:bg-ted-700 text-white text-xs font-bold text-center flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Officiell TED (HTML)
+                          </a>
+                        )}
+                        {notice.links?.tedPdf && (
+                          <a
+                            href={notice.links.tedPdf}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-red-500" />
+                            PDF
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Additional TED & Buyer Links Row */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-600 dark:text-slate-400">
+                  <span className="font-semibold text-slate-500">Direktlänkar:</span>
+                  {notice.links?.tedHtml && (
+                    <a
+                      href={notice.links.tedHtml}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3 text-ted-600" />
+                      TED EU-portal (Svenska)
+                    </a>
+                  )}
+                  {notice.links?.tedPdf && (
+                    <a
+                      href={notice.links.tedPdf}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1 transition-colors"
+                    >
+                      <FileText className="w-3 h-3 text-red-500" />
+                      TED Kungörelse (PDF)
+                    </a>
+                  )}
+                  {notice.links?.buyerProfile && (
+                    <a
+                      href={notice.links.buyerProfile}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1 transition-colors"
+                    >
+                      <Building className="w-3 h-3 text-slate-500" />
+                      Köparprofil / Myndighet
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Three Stat Cards: Buyer, Contract Size, Dates */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Authority */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Building className="w-3.5 h-3.5 text-ted-600" />
+                    Upphandlande Myndighet
+                  </h4>
+                  <div className="text-sm space-y-1">
+                    <p className="font-semibold text-slate-900 dark:text-white leading-snug">{notice.buyer}</p>
+                    {notice.city && <p className="text-xs text-slate-600 dark:text-slate-400">{notice.city}, {notice.country}</p>}
+                    {notice.links?.buyerProfile && (
+                      <a
+                        href={notice.links.buyerProfile}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-ted-600 hover:underline flex items-center gap-1 pt-1"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Köparprofil
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Contract Size / Estimated Value */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Coins className="w-3.5 h-3.5 text-emerald-600" />
+                    Storlek på uppdraget (Värde)
+                  </h4>
+                  <div className="text-sm space-y-1">
+                    {notice.estimatedValue ? (
+                      <>
+                        <p className="text-base font-black text-emerald-700 dark:text-emerald-400">
+                          {notice.estimatedValue}
+                        </p>
+                        {notice.estimatedValueFormatted && (
+                          <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                            Uppskattat takbelopp: <strong>{notice.estimatedValueFormatted}</strong>
+                          </p>
+                        )}
+                        <p className="text-[11px] text-slate-400">
+                          Uppskattat totalvärde / takbelopp
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 italic">
+                          Ej specificerat i kungörelsen
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Belopp framgår eventuellt i det fullständiga förfrågningsunderlaget.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Important Dates */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    Viktiga Datum & Status
+                  </h4>
+                  <div className="text-sm space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 text-xs">Publicerad:</span>
+                      <span className="font-medium text-xs text-slate-900 dark:text-white">{notice.publicationDate || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 text-xs">Sista anbudsdag:</span>
+                      <span className="font-bold text-xs text-slate-900 dark:text-white">{notice.deadline || 'Ej angiven'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 text-xs">Dagar kvar:</span>
+                      <span className="font-medium text-xs text-slate-900 dark:text-white">
+                        {notice.daysRemaining !== null ? `${notice.daysRemaining} dagar` : '-'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Description Section */}
               <div className="space-y-2">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Beskrivning av upphandlingen</h3>

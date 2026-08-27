@@ -24,12 +24,19 @@ export interface Notice {
   daysRemaining?: number | null;
   deadlineStatus?: 'OPEN' | 'EXPIRING_SOON' | 'EXPIRED' | 'UNKNOWN';
   formType?: string;
+  estimatedValue?: string;
+  estimatedValueAmount?: number | null;
+  estimatedValueCurrency?: string;
+  estimatedValueFormatted?: string;
+  estimatedValueDisplay?: string;
+  portalName?: string;
   links?: {
     tedHtml?: string;
     tedPdf?: string;
     submission?: string;
     documents?: string;
     buyerProfile?: string;
+    portalName?: string;
   };
   raw?: any;
 }

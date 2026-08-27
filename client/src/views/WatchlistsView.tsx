@@ -9,7 +9,10 @@ import {
   Eye,
   CheckCheck,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  Coins,
+  Globe2,
+  ExternalLink
 } from 'lucide-react';
 import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
@@ -334,6 +337,22 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                         </span>
                         <span className="text-slate-400">•</span>
                         <span className="font-mono text-slate-500">{notice.publicationNumber}</span>
+                        {notice.portalName && (
+                          <>
+                            <span className="text-slate-400">•</span>
+                            <span className="font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-0.5">
+                              <Globe2 className="w-3 h-3" /> {notice.portalName}
+                            </span>
+                          </>
+                        )}
+                        {notice.estimatedValueFormatted && (
+                          <>
+                            <span className="text-slate-400">•</span>
+                            <span className="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-0.5" title={notice.estimatedValue}>
+                              <Coins className="w-3 h-3" /> {notice.estimatedValueFormatted}
+                            </span>
+                          </>
+                        )}
                         {dlInfo.hasDeadline && (
                           <span className={`font-semibold flex items-center gap-1 ${
                             dlInfo.isExpired ? 'text-red-600 dark:text-red-400 font-bold' : 'text-slate-600 dark:text-slate-400'
@@ -355,6 +374,18 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {(notice.links?.submission || notice.links?.documents) && (
+                        <a
+                          href={notice.links?.submission || notice.links?.documents}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center gap-1"
+                          title={notice.portalName ? `Öppna ${notice.portalName}` : 'Öppna anbudslänk'}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>{notice.portalName || 'Anbud'}</span>
+                        </a>
+                      )}
                       <button
                         onClick={() => onOpenNoticeDetail(notice)}
                         className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold"

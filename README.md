@@ -46,6 +46,11 @@ En fullstack-applikation för att söka, bevaka och analysera offentliga upphand
   - Sökbart register över EU:s CPV-koder med svenska benämningar.
   - Konfigurerbar företagsprofil för anpassad AI-matchning.
 
+- **ℹ️ Om-flik & Informationscenter**:
+  - Översikt över datakällor (TED API v3, Publications Office of the EU, LOU/LUF tröskelvärden).
+  - Jämförelse med kommersiella bevakningstjänster (Kommers, Tendium, Opic/Mercell, e-Avrop, TendSign, Upphandling24).
+  - Skapad av Mats Romblad på WSP (mats.romblad@wsp.com).
+
 ---
 
 ## 🛠️ Teknisk Stack
@@ -114,5 +119,12 @@ npm run dev
 
 ---
 
+## 👤 Skapad av
+- **Mats Romblad**, WSP Sverige
+- E-post: [mats.romblad@wsp.com](mailto:mats.romblad@wsp.com)
+
+---
+
 ## 📄 Licens
 MIT
+

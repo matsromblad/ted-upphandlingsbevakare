@@ -17,8 +17,8 @@ import {
 import { signOut, isSupabaseConfigured } from '../supabaseClient';
 
 interface NavbarProps {
-  currentView: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile';
-  onSelectView: (view: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile') => void;
+  currentView: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about';
+  onSelectView: (view: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about') => void;
   unreadCount: number;
   pipelineCount: number;
   onOpenChat: () => void;
@@ -133,6 +133,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <FileText className="w-4 h-4" />
               CPV & Företagsprofil
             </button>
+
+            <button
+              onClick={() => onSelectView('about')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                currentView === 'about'
+                  ? 'bg-white dark:bg-slate-900 text-ted-700 dark:text-ted-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Info className="w-4 h-4" />
+              Om
+            </button>
           </nav>
 
           {/* Right Action buttons: AI Chat, Auth & Theme Toggle */}
@@ -181,6 +193,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <User className="w-3.5 h-3.5 text-slate-400" />
                       Min företagsprofil
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onSelectView('about');
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                    >
+                      <Info className="w-3.5 h-3.5 text-slate-400" />
+                      Om TED Bevakare
                     </button>
 
                     <button
@@ -244,8 +267,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             <FileText className="w-4 h-4" />
             Profil
           </button>
+          <button
+            onClick={() => onSelectView('about')}
+            className={`flex flex-col items-center gap-1 text-xs ${currentView === 'about' ? 'text-ted-600 font-bold' : 'text-slate-500'}`}
+          >
+            <Info className="w-4 h-4" />
+            Om
+          </button>
         </div>
       </div>
     </header>
   );
 };
+

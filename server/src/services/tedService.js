@@ -15,9 +15,25 @@ const DEFAULT_FIELDS = [
   'form-type',
   'place-of-performance-country-proc',
   'description-proc',
+  'description-lot',
   'submission-url-lot',
   'document-url-lot',
-  'buyer-profile'
+  'document-url-part',
+  'buyer-profile',
+  'estimated-value-proc',
+  'estimated-value-cur-proc',
+  'estimated-value-lot',
+  'estimated-value-cur-lot',
+  'framework-estimated-value',
+  'framework-estimated-value-cur',
+  'framework-maximum-value-lot',
+  'framework-maximum-value-cur-lot',
+  'framework-maximum-value-glo',
+  'framework-maximum-value-cur-glo',
+  'total-value',
+  'total-value-cur',
+  'tender-value',
+  'tender-value-cur'
 ];
 
 /**
@@ -78,6 +94,106 @@ export function parseTextFieldQuery(field, input) {
     return allClauses[0];
   }
   return `(${allClauses.join(' OR ')})`;
+}
+
+/**
+ * Helper to clean and extract first valid string URL
+ */
+function cleanUrl(val) {
+  if (!val) return null;
+  if (Array.isArray(val)) {
+    const found = val.find(v => typeof v === 'string' && v.trim().length > 0);
+    return found ? found.trim() : null;
+  }
+  if (typeof val === 'string' && val.trim().length > 0) {
+    return val.trim();
+  }
+  return null;
+}
+
+/**
+ * Identifies public procurement portal name from URL
+ */
+export function detectPortalName(url) {
+  if (!url) return null;
+  const u = url.toLowerCase();
+  if (u.includes('tendsign.com')) return 'TendSign';
+  if (u.includes('e-avrop.com')) return 'e-Avrop';
+  if (u.includes('kommersannons.se') || u.includes('kommers')) return 'Kommers Annons';
+  if (u.includes('clira.io') || u.includes('clira')) return 'Clira';
+  if (u.includes('mercell.com')) return 'Mercell';
+  if (u.includes('trafikverket.se')) return 'Trafikverket';
+  if (u.includes('opic.com') || u.includes('visma')) return 'Visma / Opic';
+  if (u.includes('upphandling24')) return 'Upphandling24';
+  if (u.includes('cloudia.fi')) return 'Cloudia';
+  if (u.includes('doffin.no')) return 'Doffin';
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch (e) {
+    return 'Extern portal';
+  }
+}
+
+/**
+ * Extracts number from value field (string, number, array)
+ */
+function extractNumber(val) {
+  if (val === undefined || val === null || val === '') return null;
+  if (Array.isArray(val)) {
+    for (const item of val) {
+      const num = extractNumber(item);
+      if (num !== null) return num;
+    }
+    return null;
+  }
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  if (typeof val === 'string') {
+    const clean = val.replace(/[\s,]/g, '');
+    const parsed = parseFloat(clean);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * Extracts currency string
+ */
+function extractCurrency(val, defaultCur = 'SEK') {
+  if (!val) return defaultCur;
+  if (Array.isArray(val) && val.length > 0) return String(val[0]).trim();
+  if (typeof val === 'string' && val.trim()) return val.trim();
+  return defaultCur;
+}
+
+/**
+ * Formats estimated value into readable Swedish currency representations
+ */
+export function formatEstimatedValue(amount, currency = 'SEK') {
+  if (amount === null || amount === undefined || isNaN(amount)) return null;
+  
+  const numStr = Math.round(amount).toLocaleString('sv-SE');
+  const full = `${numStr} ${currency}`;
+
+  let humanized = '';
+  if (amount >= 1_000_000) {
+    const msek = amount / 1_000_000;
+    const formattedMsek = msek % 1 === 0 ? msek.toFixed(0) : msek.toFixed(1).replace('.', ',');
+    humanized = currency === 'SEK' ? `${formattedMsek} MSEK` : `${formattedMsek} M${currency}`;
+  } else if (amount >= 1_000) {
+    const ksek = amount / 1_000;
+    const formattedKsek = ksek % 1 === 0 ? ksek.toFixed(0) : ksek.toFixed(0);
+    humanized = currency === 'SEK' ? `${formattedKsek} kSEK` : `${formattedKsek} k${currency}`;
+  }
+
+  return {
+    amount,
+    currency,
+    full,
+    humanized: humanized || full,
+    display: humanized ? `${full} (~${humanized})` : full
+  };
+>>>>>>> aaa1847 (feat: enhance tender details, XML parsing, about view, and pipeline UI)
 }
 
 /**
@@ -246,11 +362,16 @@ export function normalizeNotice(notice) {
 
   // Extract description
   let description = '';
-  const rawDesc = notice['description-proc'];
+  const rawDesc = notice['description-proc'] || notice['description-lot'];
   if (typeof rawDesc === 'string') {
     description = rawDesc;
   } else if (rawDesc && typeof rawDesc === 'object') {
-    description = rawDesc.swe || rawDesc.eng || Object.values(rawDesc)[0] || '';
+    const dVal = rawDesc.swe || rawDesc.eng || Object.values(rawDesc)[0] || '';
+    if (Array.isArray(dVal)) {
+      description = dVal.join('\n\n');
+    } else if (typeof dVal === 'string') {
+      description = dVal;
+    }
   }
 
   // Extract buyer
@@ -324,22 +445,43 @@ export function normalizeNotice(notice) {
     }
   }
 
-  // External Links
+  // Estimated Value & Contract Size
+  const rawAmount = extractNumber(notice['estimated-value-proc']) ??
+                    extractNumber(notice['estimated-value-lot']) ??
+                    extractNumber(notice['total-value']) ??
+                    extractNumber(notice['framework-maximum-value-lot']) ??
+                    extractNumber(notice['framework-maximum-value-glo']) ??
+                    extractNumber(notice['framework-estimated-value']) ??
+                    extractNumber(notice['tender-value']);
+
+  const rawCurrency = extractCurrency(notice['estimated-value-cur-proc']) ||
+                      extractCurrency(notice['estimated-value-cur-lot']) ||
+                      extractCurrency(notice['total-value-cur']) ||
+                      extractCurrency(notice['framework-maximum-value-cur-lot']) ||
+                      extractCurrency(notice['framework-maximum-value-cur-glo']) ||
+                      (country === 'SWE' ? 'SEK' : 'EUR');
+
+  const valueFormattedObj = formatEstimatedValue(rawAmount, rawCurrency);
+  const estimatedValue = valueFormattedObj ? valueFormattedObj.full : '';
+  const estimatedValueAmount = valueFormattedObj ? valueFormattedObj.amount : null;
+  const estimatedValueCurrency = valueFormattedObj ? valueFormattedObj.currency : rawCurrency;
+  const estimatedValueFormatted = valueFormattedObj ? valueFormattedObj.humanized : '';
+  const estimatedValueDisplay = valueFormattedObj ? valueFormattedObj.display : '';
+
+  // External URLs & Portal Detection
+  const submissionUrl = cleanUrl(notice['submission-url-lot']);
+  const documentUrl = cleanUrl(notice['document-url-lot']) || cleanUrl(notice['document-url-part']);
+  const buyerProfile = cleanUrl(notice['buyer-profile']);
+
+  const portalName = detectPortalName(submissionUrl) || detectPortalName(documentUrl) || (buyerProfile ? detectPortalName(buyerProfile) : null);
+
+  // TED Official URLs (HTML and PDF)
   const links = notice.links || {};
   const htmlLinks = links.html || {};
   const pdfLinks = links.pdf || {};
 
   const tedHtmlUrl = htmlLinks.SWE || htmlLinks.ENG || (htmlLinks && Object.values(htmlLinks)[0]) || `https://ted.europa.eu/sv/notice/-/detail/${pubNum}`;
   const tedPdfUrl = pdfLinks.SWE || pdfLinks.ENG || (pdfLinks && Object.values(pdfLinks)[0]) || `https://ted.europa.eu/sv/notice/${pubNum}/pdf`;
-  
-  let submissionUrl = notice['submission-url-lot'] || null;
-  if (Array.isArray(submissionUrl)) submissionUrl = submissionUrl[0] || null;
-
-  let documentUrl = notice['document-url-lot'] || null;
-  if (Array.isArray(documentUrl)) documentUrl = documentUrl[0] || null;
-
-  let buyerProfile = notice['buyer-profile'] || null;
-  if (Array.isArray(buyerProfile)) buyerProfile = buyerProfile[0] || null;
 
   const formType = notice['form-type'] || notice['notice-type'] || 'competition';
 
@@ -358,12 +500,19 @@ export function normalizeNotice(notice) {
     daysRemaining,
     deadlineStatus,
     formType,
+    estimatedValue,
+    estimatedValueAmount,
+    estimatedValueCurrency,
+    estimatedValueFormatted,
+    estimatedValueDisplay,
+    portalName,
     links: {
       tedHtml: tedHtmlUrl,
       tedPdf: tedPdfUrl,
       submission: submissionUrl,
       documents: documentUrl,
-      buyerProfile
+      buyerProfile,
+      portalName
     },
     raw: notice
   };
