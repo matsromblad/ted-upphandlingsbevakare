@@ -141,7 +141,6 @@ export const App: React.FC = () => {
         onToggleDarkMode={handleToggleDarkMode}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
-        onOpenAbout={() => setIsAboutModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -188,7 +187,7 @@ export const App: React.FC = () => {
               TED
             </div>
             <span>
-              <strong>TED Upphandlingsbevakare</strong> • Skapad av <strong>Mats Römblad</strong>
+              <strong>TED Upphandlingsbevakare</strong> • Skapad av <strong>Mats Romblad</strong> (<a href="mailto:mats.romblad@wsp.com" className="text-ted-600 dark:text-ted-400 hover:underline">mats.romblad@wsp.com</a>)
             </span>
           </div>
 

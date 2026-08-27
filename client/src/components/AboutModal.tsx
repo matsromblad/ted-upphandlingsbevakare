@@ -70,7 +70,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose }) => {
               <span>Skapare & Bakgrund</span>
             </div>
             <p className="text-slate-800 dark:text-slate-200 leading-relaxed text-sm">
-              Appen är skapad och utvecklad av <strong>Mats Römblad</strong> med syftet att ge konsulter, anbudsgivare och företag ett modernt, AI-drivet och transparent verktyg för att hitta och analysera offentliga upphandlingar i Sverige och övriga EU.
+              Appen är skapad och utvecklad av <strong>Mats Romblad</strong> (<a href="mailto:mats.romblad@wsp.com" className="text-ted-600 dark:text-ted-400 font-medium hover:underline">mats.romblad@wsp.com</a>) med syftet att ge konsulter, anbudsgivare och företag ett modernt, AI-drivet och transparent verktyg för att hitta och analysera offentliga upphandlingar i Sverige och övriga EU.
             </p>
           </div>
 
