@@ -18,6 +18,8 @@ import {
   ChevronRight,
   Code2,
   CheckCircle,
+  CheckCircle2,
+  Layers,
   HelpCircle,
   RefreshCw,
   AlertCircle
@@ -202,58 +204,144 @@ export const SearchView: React.FC<SearchViewProps> = ({
         <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -left-20 -top-20 w-80 h-80 bg-ted-500/20 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-200 text-xs font-semibold backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-            <span>MiniMax-M3 Smart Sökassistent</span>
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+          {/* Left Column: Smart Search */}
+          <div className="lg:col-span-7 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-200 text-xs font-semibold backdrop-blur-md">
+              <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+              <span>MiniMax-M3 Smart Sökassistent</span>
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+              Hitta rätt upphandlingar i EU & Sverige
+            </h1>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Beskriv vad ditt företag säljer med egna ord, så genererar MiniMax optimala CPV-koder och TED-sökfilter automatiskt.
+            </p>
+
+            <form onSubmit={handleSmartSearch} className="flex flex-col sm:flex-row gap-2 pt-1">
+              <div className="relative flex-1">
+                <Sparkles className="w-4 h-4 text-purple-400 absolute left-4 top-3.5" />
+                <input
+                  type="text"
+                  value={smartPrompt}
+                  onChange={(e) => setSmartPrompt(e.target.value)}
+                  placeholder="t.ex. Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige..."
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/10 dark:bg-slate-900/60 border border-white/20 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-md"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!smartPrompt.trim() || smartSearching}
+                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-sm shadow-lg shadow-purple-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
+              >
+                {smartSearching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    MiniMax tolkar...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Smart Sök
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* AI Explanation Pill */}
+            {smartExplanation && (
+              <div className="p-3.5 rounded-xl bg-purple-900/40 border border-purple-500/30 text-xs text-purple-200 flex items-start gap-2 animate-fadeIn">
+                <CheckCircle className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-white">AI-tolkning:</span> {smartExplanation}
+                </div>
+              </div>
+            )}
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-            Hitta rätt upphandlingar i EU & Sverige
-          </h1>
-          <p className="text-sm text-slate-300">
-            Beskriv vad ditt företag säljer med egna ord, så genererar MiniMax optimala CPV-koder och TED-sökfilter automatiskt.
-          </p>
+          {/* Right Column: Replaced Systems & Coverage Card */}
+          <div className="lg:col-span-5 bg-white/10 dark:bg-slate-900/60 backdrop-blur-md rounded-2xl p-5 border border-white/15 dark:border-purple-500/30 shadow-inner flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-300" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-purple-200">
+                    Ersätter & Konsoliderar
+                  </span>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  Allt-i-ett
+                </span>
+              </div>
 
-          <form onSubmit={handleSmartSearch} className="flex flex-col sm:flex-row gap-2 pt-2">
-            <div className="relative flex-1">
-              <Sparkles className="w-4 h-4 text-purple-400 absolute left-4 top-3.5" />
-              <input
-                type="text"
-                value={smartPrompt}
-                onChange={(e) => setSmartPrompt(e.target.value)}
-                placeholder="t.ex. Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige..."
-                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/10 dark:bg-slate-900/60 border border-white/20 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-md"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={!smartPrompt.trim() || smartSearching}
-              className="px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-sm shadow-lg shadow-purple-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
-            >
-              {smartSearching ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  MiniMax tolkar...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Smart Sök
-                </>
-              )}
-            </button>
-          </form>
+              <p className="text-xs text-slate-300 mt-2.5 leading-relaxed">
+                Samlar direktdata från officiella källor och ersätter separata dyra bevaknings- och anbudsverktyg:
+              </p>
 
-          {/* AI Explanation Pill */}
-          {smartExplanation && (
-            <div className="p-3.5 rounded-xl bg-purple-900/40 border border-purple-500/30 text-xs text-purple-200 flex items-start gap-2 animate-fadeIn">
-              <CheckCircle className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <span className="font-semibold text-white">AI-tolkning:</span> {smartExplanation}
+              {/* System Badges Grid */}
+              <div className="grid grid-cols-2 gap-2 mt-3.5">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 dark:bg-slate-800/80 border border-white/10 dark:border-slate-700/60 text-xs font-semibold text-white shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
+                  <span className="truncate">Tendium</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 dark:bg-slate-800/80 border border-white/10 dark:border-slate-700/60 text-xs font-semibold text-white shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                  <span className="truncate">Kommers Annons</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 dark:bg-slate-800/80 border border-white/10 dark:border-slate-700/60 text-xs font-semibold text-white shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                  <span className="truncate">e-Avrop</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 dark:bg-slate-800/80 border border-white/10 dark:border-slate-700/60 text-xs font-semibold text-white shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                  <span className="truncate">Mercell / Opic</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 dark:bg-slate-800/80 border border-white/10 dark:border-slate-700/60 text-xs font-semibold text-white shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0" />
+                  <span className="truncate">Visma TendSign</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 dark:bg-slate-800/80 border border-white/10 dark:border-slate-700/60 text-xs font-semibold text-white shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                  <span className="truncate">TED (EU Live Feed)</span>
+                </div>
               </div>
             </div>
-          )}
+
+            {/* TED Official Link & Description */}
+            <div className="p-3 rounded-xl bg-white/5 dark:bg-slate-850/80 border border-white/10 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white flex items-center gap-1.5 text-xs">
+                  <ExternalLink className="w-3.5 h-3.5 text-ted-400" />
+                  Vad är TED?
+                </span>
+                <a
+                  href="https://ted.europa.eu/sv/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-purple-300 hover:text-purple-200 hover:underline font-semibold inline-flex items-center gap-1"
+                >
+                  ted.europa.eu/sv
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                <strong>TED (Tenders Electronic Daily)</strong> är EU:s officiella databas där alla svenska och europeiska offentliga upphandlingar över tröskelvärdena måste publiceras enligt lag.
+              </p>
+            </div>
+
+            {/* Bottom Benefit Footer */}
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-300">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                Officiellt TED API
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-300 flex-shrink-0" />
+                MiniMax AI-analys
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
