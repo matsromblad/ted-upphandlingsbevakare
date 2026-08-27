@@ -110,17 +110,26 @@ export async function signInWithPassword(email: string, password: string) {
 
 /**
  * Email & Password sign up
+ * Creates/confirms user on backend (avoiding email rate limits) and logs in immediately
  */
 export async function signUpWithPassword(email: string, password: string, fullName = '') {
   const client = await ensureSupabaseClient();
   if (!client) throw new Error('Supabase är inte konfigurerat');
-  return client.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { full_name: fullName }
-    }
+
+  // Call backend registration endpoint
+  const res = await fetch('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, fullName })
   });
+
+  const result = await res.json();
+  if (!result.success) {
+    throw new Error(result.error || 'Kunde inte skapa konto');
+  }
+
+  // Automatically sign in to get active session
+  return client.auth.signInWithPassword({ email, password });
 }
 
 /**

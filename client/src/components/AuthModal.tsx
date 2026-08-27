@@ -64,22 +64,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       if (isSignUp) {
-        const res = await signUpWithPassword(email, password, fullName);
+        const res = await signUpWithPassword(email.trim(), password, fullName.trim());
         if (res.error) throw res.error;
-        if (res.data.user && !res.data.session) {
-          setSuccessMessage('Ett bekräftelsemail har skickats till din e-postadress. Klicka på länken för att aktivera kontot.');
-        } else {
-          onSuccess();
-          onClose();
-        }
+        onSuccess();
+        onClose();
       } else {
-        const res = await signInWithPassword(email, password);
+        const res = await signInWithPassword(email.trim(), password);
         if (res.error) throw res.error;
         onSuccess();
         onClose();
       }
     } catch (err: any) {
-      setError(err.message || 'Autentisering misslyckades.');
+      console.error('[Auth Error]:', err);
+      let msg = err?.message || 'Autentisering misslyckades.';
+      if (msg.toLowerCase().includes('invalid login credentials')) {
+        msg = 'Fel e-postadress eller lösenord. Kontrollera dina uppgifter eller klicka på "Skapa konto".';
+      } else if (msg.toLowerCase().includes('rate limit')) {
+        msg = 'För många förfrågningar just nu. Vänta en kort stund och försök igen.';
+      } else if (msg.toLowerCase().includes('password should be at least')) {
+        msg = 'Lösenordet måste vara minst 6 tecken långt.';
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

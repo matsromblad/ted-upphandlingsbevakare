@@ -69,6 +69,58 @@ router.get('/config', (req, res) => {
   });
 });
 
+router.post('/auth/signup', async (req, res) => {
+  try {
+    const { email, password, fullName } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'E-post och lösenord krävs' });
+    }
+
+    if (!isSupabaseConfigured || !supabaseAdmin) {
+      return res.json({ success: true, local: true });
+    }
+
+    // Try creating the user with auto-confirmed email (bypasses email rate limit)
+    const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName || '' }
+    });
+
+    if (createError) {
+      if (createError.code === 'email_exists' || createError.status === 422) {
+        // User already registered - update password and ensure email is confirmed
+        const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
+        const existingUser = userList?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (existingUser) {
+          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+            password,
+            email_confirm: true,
+            user_metadata: { full_name: fullName || existingUser.user_metadata?.full_name || '' }
+          });
+          return res.json({ success: true, user: existingUser, existing: true });
+        }
+      }
+      throw createError;
+    }
+
+    const newUser = createData?.user;
+    if (newUser?.id) {
+      try {
+        await watchlistDao.seedDefaults(newUser.id);
+      } catch (e) {
+        console.warn('Failed to seed default watchlists for new user:', e);
+      }
+    }
+
+    res.json({ success: true, user: newUser });
+  } catch (error) {
+    console.error('[Auth Signup Error]:', error);
+    res.status(400).json({ success: false, error: error.message || 'Kunde inte skapa konto' });
+  }
+});
+
 router.post('/ted/search', async (req, res) => {
   try {
     const { filters = {}, page = 1, limit = 20 } = req.body;

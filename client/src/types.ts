@@ -75,6 +75,11 @@ export interface WatchlistHit {
   discovered_at: string;
 }
 
+export interface RequestedRole {
+  role: string;
+  requirements: string;
+}
+
 export interface AIAnalysis {
   fitScore: number;
   summary: string;
@@ -83,6 +88,12 @@ export interface AIAnalysis {
   risksAndChallenges: string[];
   recommendedBidStrategy: string;
   clarificationQuestions: string[];
+  // Fördjupad anbudsanalys
+  requestedRoles?: (RequestedRole | string)[];
+  estimatedValueOrBudget?: string;
+  projectDuration?: string;
+  standardContractTerms?: string;
+  requiredSubmissionDocuments?: string[];
 }
 
 export interface SavedTender {
