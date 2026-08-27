@@ -48,7 +48,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [allCountries, setAllCountries] = useState(false);
   const [selectedCpvs, setSelectedCpvs] = useState<string[]>([]);
   const [formType, setFormType] = useState<FormType>('competition');
-  const [datePreset, setDatePreset] = useState<DatePreset>('30d');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
   const [rawQuery, setRawQuery] = useState('');
   const [showExpertMode, setShowExpertMode] = useState(false);
 
@@ -221,7 +221,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 type="text"
                 value={smartPrompt}
                 onChange={(e) => setSmartPrompt(e.target.value)}
-                placeholder="t.ex. Hitta ramavtal för systemutvecklare och molndrift i Sverige utlysta i år..."
+                placeholder="t.ex. Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige..."
                 className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/10 dark:bg-slate-900/60 border border-white/20 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-md"
               />
             </div>
@@ -279,7 +279,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Keyword Search */}
           <div className="space-y-1">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fritext / Sökord</label>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fritext / Sökord / ID</label>
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
@@ -287,7 +287,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && executeSearch(1)}
-                placeholder="t.ex. konsult, IT, medicinteknik..."
+                placeholder="t.ex. CAD/BIM, 489981-2026, konsult..."
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
               />
             </div>
@@ -331,6 +331,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               onChange={(e) => setDatePreset(e.target.value as DatePreset)}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white font-medium"
             >
+              <option value="all">Alla datum (alla aktiva)</option>
               <option value="1d">Senaste 24 timmarna</option>
               <option value="7d">Senaste 7 dagarna</option>
               <option value="14d">Senaste 14 dagarna</option>

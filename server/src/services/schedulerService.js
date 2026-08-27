@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { v4 as uuidv4 } from 'uuid';
 import { watchlistDao, hitsDao } from '../db.js';
 import { searchTedNotices } from './tedService.js';
+import { maybeSendWatchlistDigestEmail } from './emailService.js';
 
 let cronTask = null;
 
@@ -78,7 +79,15 @@ export async function runAllActiveWatchlists(userId = null) {
   const results = [];
   for (const wl of watchlists) {
     const res = await runWatchlist(wl);
-    results.push({ id: wl.id, name: wl.name, ...res });
+    let emailResult = null;
+    try {
+      emailResult = await maybeSendWatchlistDigestEmail(wl);
+    } catch (err) {
+      console.error(`[Watchlist Email] Error sending digest for ${wl.id}:`, err);
+      emailResult = { success: false, error: err.message };
+    }
+
+    results.push({ id: wl.id, name: wl.name, ...res, email: emailResult });
   }
   return results;
 }
@@ -92,19 +101,19 @@ export function initScheduler() {
     runAllActiveWatchlists().catch(console.error);
   }, 2000);
 
-  // Check every 10 minutes according to schedule
+  // Check every 10 minutes and send digests when a watchlist cadence is due
   cronTask = cron.schedule('*/10 * * * *', async () => {
     console.log('[Watchlist Cron] Checking watchlists according to schedule...');
     try {
       const watchlists = await watchlistDao.getAllActiveSystem();
-      const now = Date.now();
 
       for (const wl of watchlists) {
-        const intervalMs = (wl.interval_minutes || 60) * 60 * 1000;
-        const lastRun = wl.last_run_at ? new Date(wl.last_run_at).getTime() : 0;
-        
-        if (now - lastRun >= intervalMs) {
-          await runWatchlist(wl);
+        await runWatchlist(wl);
+
+        try {
+          await maybeSendWatchlistDigestEmail(wl);
+        } catch (err) {
+          console.error(`[Watchlist Email] Scheduled digest error for ${wl.id}:`, err);
         }
       }
     } catch (err) {

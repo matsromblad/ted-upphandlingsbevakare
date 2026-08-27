@@ -2,6 +2,7 @@ import {
   Notice,
   NoticeFilters,
   Watchlist,
+  WatchlistEmailFrequency,
   WatchlistHit,
   SavedTender,
   CompanyProfile,
@@ -121,7 +122,7 @@ export const api = {
     return res.json();
   },
 
-  createWatchlist: async (data: { name: string; filters: NoticeFilters; intervalMinutes?: number }): Promise<{
+  createWatchlist: async (data: { name: string; filters: NoticeFilters; emailFrequency: WatchlistEmailFrequency }): Promise<{
     success: boolean;
     watchlist: Watchlist;
     error?: string;
@@ -135,7 +136,7 @@ export const api = {
     return res.json();
   },
 
-  updateWatchlist: async (id: string, data: { name?: string; filters?: NoticeFilters; active?: boolean; intervalMinutes?: number }): Promise<{
+  updateWatchlist: async (id: string, data: { name?: string; filters?: NoticeFilters; active?: boolean; emailFrequency?: WatchlistEmailFrequency }): Promise<{
     success: boolean;
     watchlist: Watchlist;
     error?: string;

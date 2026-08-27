@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Bell, Clock, Sparkles, Check } from 'lucide-react';
-import { NoticeFilters, Watchlist } from '../types';
+import { X, Bell, Check } from 'lucide-react';
+import { NoticeFilters, Watchlist, WatchlistEmailFrequency } from '../types';
 import { api } from '../api';
 
 interface CreateWatchlistModalProps {
@@ -19,7 +19,7 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
   onWatchlistCreated
 }) => {
   const [name, setName] = useState(defaultName || 'Ny Bevakningsprofil');
-  const [intervalMinutes, setIntervalMinutes] = useState(60);
+  const [emailFrequency, setEmailFrequency] = useState<WatchlistEmailFrequency>('daily');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -33,7 +33,7 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
       const res = await api.createWatchlist({
         name,
         filters,
-        intervalMinutes
+        emailFrequency
       });
 
       if (res.success && res.watchlist) {
@@ -75,34 +75,37 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="t.ex. IT-konsulter & Molntjänster Sverige"
+              placeholder="t.ex. BIM & Digital Informationshantering Sverige"
               required
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Kontrollintervall</label>
-            <div className="grid grid-cols-3 gap-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">E-postutskick</label>
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { val: 15, label: 'Var 15:e min' },
-                { val: 60, label: 'Varje timme' },
-                { val: 1440, label: 'En gång per dygn' }
+                { val: 'daily', label: 'Dagligen', description: 'Sammanfattning varje dag' },
+                { val: 'weekly', label: 'Veckovis', description: 'Sammanfattning en gang per vecka' }
               ].map((opt) => (
                 <button
                   type="button"
                   key={opt.val}
-                  onClick={() => setIntervalMinutes(opt.val)}
+                  onClick={() => setEmailFrequency(opt.val as WatchlistEmailFrequency)}
                   className={`py-2 px-3 rounded-xl border text-xs font-medium transition-all ${
-                    intervalMinutes === opt.val
+                    emailFrequency === opt.val
                       ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-bold'
                       : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                   }`}
                 >
-                  {opt.label}
+                  <span className="block">{opt.label}</span>
+                  <span className="mt-1 block text-[11px] font-normal opacity-80">{opt.description}</span>
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Bevakningen fortsatter att leta nya upphandlingar i bakgrunden, men mail skickas bara enligt valt schema.
+            </p>
           </div>
 
           {/* Active filter summary preview */}

@@ -7,10 +7,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT,
   full_name TEXT,
-  company_name TEXT DEFAULT 'Mitt Företag AB',
-  description TEXT DEFAULT '',
-  keywords TEXT DEFAULT 'IT-konsult, systemutveckling, molntjänster, cybersäkerhet',
-  preferred_cpv JSONB DEFAULT '["72000000", "72200000"]'::jsonb,
+  company_name TEXT DEFAULT 'WSP Sverige AB (BIM-enheten)',
+  description TEXT DEFAULT 'WSP Sverige AB är ett ledande analys- och teknikkonsultföretag. BIM-enheten arbetar med BIM-samordning, digital informationshantering, 3D/4D/5D-modellering, VDC, GIS-integration, digitala tvillingar och projekteringsledning inom husbyggnad, anläggning och infrastruktur.',
+  keywords TEXT DEFAULT 'BIM, BIM-samordning, VDC, Building Information Modeling, digital informationshantering, 3D-modellering, CAD, digital tvilling, projektering, samhällsbyggnad',
+  preferred_cpv JSONB DEFAULT '["71300000", "71240000", "71320000", "71541000", "72224000"]'::jsonb,
   preferred_countries JSONB DEFAULT '["SWE"]'::jsonb,
   min_value BIGINT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS public.watchlists (
   filters_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   active BOOLEAN NOT NULL DEFAULT true,
   interval_minutes INTEGER NOT NULL DEFAULT 60,
+  email_frequency TEXT NOT NULL DEFAULT 'daily' CHECK (email_frequency IN ('daily', 'weekly')),
+  last_email_sent_at TIMESTAMPTZ,
+  unsubscribe_token TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
   last_run_at TIMESTAMPTZ,
   last_hit_count INTEGER DEFAULT 0,
   new_count INTEGER DEFAULT 0,
@@ -41,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.watchlist_hits (
   notice_data_json JSONB NOT NULL,
   is_read BOOLEAN NOT NULL DEFAULT false,
   is_saved BOOLEAN NOT NULL DEFAULT false,
+  emailed_at TIMESTAMPTZ,
   discovered_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
   UNIQUE(user_id, watchlist_id, notice_id)
 );
@@ -93,25 +97,27 @@ BEGIN
   );
 
   -- Seed initial default watchlists for the new user
-  INSERT INTO public.watchlists (id, user_id, name, query, filters_json, active, interval_minutes)
+  INSERT INTO public.watchlists (id, user_id, name, query, filters_json, active, interval_minutes, email_frequency)
   VALUES
     (
       'wl-' || substr(md5(random()::text), 1, 8),
       new.id,
-      'IT-konsulttjänster & Utveckling (Sverige)',
-      'place-of-performance IN (SWE) AND classification-cpv IN (72000000, 72200000) AND form-type = competition',
-      '{"countries": ["SWE"], "cpv": ["72000000", "72200000"], "formType": "competition", "datePreset": "30d"}'::jsonb,
+      'BIM & Digital Informationshantering (Sverige)',
+      '(buyer-country IN (SWE) OR place-of-performance IN (SWE)) AND (FT ~ (BIM) OR FT ~ (VDC) OR FT ~ (Building Information Modeling) OR FT ~ (digital tvilling)) AND form-type = competition',
+      '{"keywords": "BIM OR VDC OR Building Information Modeling OR digital tvilling", "countries": ["SWE"], "formType": "competition", "datePreset": "30d"}'::jsonb,
       true,
-      60
+      60,
+      'daily'
     ),
     (
       'wl-' || substr(md5(random()::text), 1, 8),
       new.id,
-      'Cybersäkerhet & Molntjänster (Sverige)',
-      'place-of-performance IN (SWE) AND FT ~ (cybersäkerhet OR molntjänster) AND form-type = competition',
-      '{"keywords": "cybersäkerhet OR molntjänster", "countries": ["SWE"], "formType": "competition", "datePreset": "30d"}'::jsonb,
+      'BIM-samordning & Projekteringsstöd (Sverige)',
+      '(buyer-country IN (SWE) OR place-of-performance IN (SWE)) AND classification-cpv IN (71300000, 71240000, 71320000) AND (FT ~ (BIM-samordnare) OR FT ~ (BIM-ledare) OR FT ~ (CAD-samordning)) AND form-type = competition',
+      '{"keywords": "BIM-samordnare OR BIM-ledare OR CAD-samordning", "cpv": ["71300000", "71240000", "71320000"], "countries": ["SWE"], "formType": "competition", "datePreset": "30d"}'::jsonb,
       true,
-      60
+      60,
+      'daily'
     );
 
   RETURN NEW;

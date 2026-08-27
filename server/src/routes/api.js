@@ -4,11 +4,55 @@ import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
 import { naturalLanguageToFilters, analyzeTender, chatWithAssistant } from '../services/minimaxService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
+import { buildWatchlistManageUrl } from '../services/emailService.js';
 import { CPV_CATEGORIES, searchCpv } from '../services/cpvData.js';
 import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao } from '../db.js';
 import { requireAuth } from '../supabase.js';
 
 const router = express.Router();
+const VALID_EMAIL_FREQUENCIES = new Set(['daily', 'weekly']);
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function resolveEmailFrequency(rawFrequency, fallback = 'daily') {
+  if (VALID_EMAIL_FREQUENCIES.has(rawFrequency)) {
+    return rawFrequency;
+  }
+
+  return fallback;
+}
+
+function renderUnsubscribeHtml(title, message, manageUrl = '') {
+  const manageLink = manageUrl
+    ? `<a href="${escapeHtml(manageUrl)}" style="display:inline-block;margin-top:16px;padding:12px 18px;border-radius:999px;background:#0f172a;color:#fff;text-decoration:none;font-weight:700;">Oppna bevakning</a>`
+    : '';
+
+  return `
+    <!doctype html>
+    <html lang="sv">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>${escapeHtml(title)}</title>
+      </head>
+      <body style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:640px;margin:48px auto;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:32px;">
+          <div style="font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#b45309;">TED Upphandlingsbevakare</div>
+          <h1 style="margin:12px 0 10px;font-size:28px;">${escapeHtml(title)}</h1>
+          <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;">${escapeHtml(message)}</p>
+          ${manageLink}
+        </div>
+      </body>
+    </html>
+  `;
+}
 
 // ==========================================
 // 1. TED Search & Exploration (Open / Public)
@@ -142,6 +186,29 @@ router.delete('/ai/chat/history', requireAuth, async (req, res) => {
 // 3. Watchlists Endpoints (User Scoped)
 // ==========================================
 
+router.get('/watchlists/unsubscribe/:token', async (req, res) => {
+  try {
+    const watchlist = await watchlistDao.unsubscribeByToken(req.params.token);
+    if (!watchlist) {
+      return res.status(404).type('html').send(renderUnsubscribeHtml(
+        'Lanken ar inte giltig',
+        'Vi kunde inte hitta nagon bevakning for den har avregistreringslanken.'
+      ));
+    }
+
+    return res.type('html').send(renderUnsubscribeHtml(
+      'Bevakningen ar avregistrerad',
+      `Du kommer inte att fa fler mail fran bevakningen "${watchlist.name}".`,
+      buildWatchlistManageUrl(watchlist)
+    ));
+  } catch (error) {
+    return res.status(500).type('html').send(renderUnsubscribeHtml(
+      'Nagot gick fel',
+      `Det gick inte att avregistrera bevakningen just nu: ${error.message}`
+    ));
+  }
+});
+
 router.get('/watchlists', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -160,9 +227,12 @@ router.get('/watchlists', requireAuth, async (req, res) => {
 router.post('/watchlists', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name, filters = {}, intervalMinutes = 60 } = req.body;
+    const { name, filters = {}, emailFrequency } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Namn på bevakning krävs' });
+    }
+    if (!VALID_EMAIL_FREQUENCIES.has(emailFrequency)) {
+      return res.status(400).json({ error: 'E-postutskick måste vara daily eller weekly' });
     }
 
     const query = buildExpertQuery(filters);
@@ -175,7 +245,9 @@ router.post('/watchlists', requireAuth, async (req, res) => {
       query,
       filters_json: JSON.stringify(filters),
       active: 1,
-      interval_minutes: parseInt(intervalMinutes) || 60
+      interval_minutes: 60,
+      email_frequency: emailFrequency,
+      unsubscribe_token: uuidv4()
     });
 
     // Trigger initial run immediately in background
@@ -190,10 +262,13 @@ router.post('/watchlists', requireAuth, async (req, res) => {
 router.put('/watchlists/:id', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name, filters = {}, active, intervalMinutes } = req.body;
+    const { name, filters = {}, active, emailFrequency } = req.body;
     const existing = await watchlistDao.getById(req.params.id, userId);
     if (!existing) {
       return res.status(404).json({ error: 'Bevakning hittades inte' });
+    }
+    if (emailFrequency !== undefined && !VALID_EMAIL_FREQUENCIES.has(emailFrequency)) {
+      return res.status(400).json({ error: 'E-postutskick måste vara daily eller weekly' });
     }
 
     const query = buildExpertQuery(filters);
@@ -202,7 +277,8 @@ router.put('/watchlists/:id', requireAuth, async (req, res) => {
       query,
       filters_json: JSON.stringify(filters),
       active: active !== undefined ? (active ? 1 : 0) : existing.active,
-      interval_minutes: intervalMinutes !== undefined ? parseInt(intervalMinutes) : existing.interval_minutes
+      interval_minutes: existing.interval_minutes,
+      email_frequency: resolveEmailFrequency(emailFrequency, existing.email_frequency)
     });
 
     res.json({ success: true, watchlist: { ...updated, filters } });

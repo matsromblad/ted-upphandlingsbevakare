@@ -2,19 +2,10 @@ import React, { useState, useEffect } from 'react';
 import {
   Bell,
   Play,
-  CheckCircle,
-  Clock,
   Plus,
   Trash2,
-  Bookmark,
-  ExternalLink,
   Download,
-  Building,
-  MapPin,
-  Calendar,
-  Sparkles,
   Loader2,
-  RefreshCw,
   Eye,
   CheckCheck
 } from 'lucide-react';
@@ -27,22 +18,35 @@ interface WatchlistsViewProps {
   savedTenders: SavedTender[];
   onTenderSaved: () => void;
   onWatchlistChanged: () => void;
+  initialSelectedWatchlistId?: string | null;
+  initialTab?: 'profiles' | 'feed';
 }
 
 export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   onOpenNoticeDetail,
   savedTenders,
   onTenderSaved,
-  onWatchlistChanged
+  onWatchlistChanged,
+  initialSelectedWatchlistId = null,
+  initialTab = 'feed'
 }) => {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [hits, setHits] = useState<WatchlistHit[]>([]);
-  const [activeTab, setActiveTab] = useState<'profiles' | 'feed'>('feed');
-  const [selectedWatchlistId, setSelectedWatchlistId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'profiles' | 'feed'>(initialTab);
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState<string | null>(initialSelectedWatchlistId);
   const [loading, setLoading] = useState(false);
   const [runningAll, setRunningAll] = useState(false);
   const [runningSingleId, setRunningSingleId] = useState<string | null>(null);
+  const [updatingFrequencyId, setUpdatingFrequencyId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    setSelectedWatchlistId(initialSelectedWatchlistId);
+  }, [initialSelectedWatchlistId]);
 
   useEffect(() => {
     loadData();
@@ -105,6 +109,24 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
     }
   };
 
+  const handleEmailFrequencyChange = async (watchlist: Watchlist, emailFrequency: Watchlist['email_frequency']) => {
+    setUpdatingFrequencyId(watchlist.id);
+    try {
+      await api.updateWatchlist(watchlist.id, {
+        name: watchlist.name,
+        filters: watchlist.filters || {},
+        active: Boolean(watchlist.active),
+        emailFrequency
+      });
+      await loadData();
+      onWatchlistChanged();
+    } catch (e) {
+      console.error('Failed to update watchlist frequency:', e);
+    } finally {
+      setUpdatingFrequencyId(null);
+    }
+  };
+
   const handleMarkHitRead = async (hitId: string) => {
     try {
       await api.markHitRead(hitId);
@@ -141,6 +163,10 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   const filteredHits = selectedWatchlistId
     ? hits.filter(h => h.watchlist_id === selectedWatchlistId)
     : hits;
+  const emailFrequencyLabels: Record<Watchlist['email_frequency'], string> = {
+    daily: 'Dagligen',
+    weekly: 'Veckovis'
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -158,7 +184,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Bakgrundsmotorn pollar EU:s TED-databas automatiskt och larmar vid nya relevanta upphandlingar.
+            Bakgrundsmotorn letar nya TED-upphandlingar lopande och skickar sammanfattningsmail dagligen eller veckovis.
           </p>
         </div>
 
@@ -340,12 +366,17 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {watchlists.map((wl) => {
             const isRunning = runningSingleId === wl.id;
+            const isUpdatingFrequency = updatingFrequencyId === wl.id;
             const filters = wl.filters || {};
 
             return (
               <div
                 key={wl.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:border-amber-400 dark:hover:border-amber-600 transition-all"
+                className={`bg-white dark:bg-slate-900 rounded-2xl p-5 border shadow-sm flex flex-col justify-between space-y-4 transition-all ${
+                  selectedWatchlistId === wl.id
+                    ? 'border-amber-500 dark:border-amber-500 ring-2 ring-amber-200 dark:ring-amber-900/60'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-600'
+                }`}
               >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -371,10 +402,31 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                   <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-850 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
                     <p>• Sökord: <span className="font-medium text-slate-900 dark:text-white">{filters.keywords || 'Alla'}</span></p>
                     <p>• Länder: <span className="font-medium text-slate-900 dark:text-white">{filters.countries?.join(', ') || 'SWE'}</span></p>
-                    <p>• Intervall: <span className="font-medium text-slate-900 dark:text-white">Var {wl.interval_minutes} min</span></p>
+                    <p>• E-post: <span className="font-medium text-slate-900 dark:text-white">{emailFrequencyLabels[wl.email_frequency] || 'Dagligen'}</span></p>
                     {wl.last_run_at && (
-                      <p className="text-[11px] text-slate-400 pt-1">Senast körd: {new Date(wl.last_run_at).toLocaleTimeString('sv-SE')}</p>
+                      <p className="text-[11px] text-slate-400 pt-1">Senast sokt: {new Date(wl.last_run_at).toLocaleString('sv-SE')}</p>
                     )}
+                    {wl.last_email_sent_at && (
+                      <p className="text-[11px] text-slate-400">Senaste mail: {new Date(wl.last_email_sent_at).toLocaleString('sv-SE')}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['daily', 'weekly'] as const).map((frequency) => (
+                      <button
+                        key={frequency}
+                        type="button"
+                        disabled={isUpdatingFrequency}
+                        onClick={() => handleEmailFrequencyChange(wl, frequency)}
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                          wl.email_frequency === frequency
+                            ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                        } ${isUpdatingFrequency ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        {emailFrequencyLabels[frequency]}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -382,6 +434,17 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                   <span className="text-slate-400 font-medium">Träffar: {wl.last_hit_count || 0}</span>
 
                   <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setSelectedWatchlistId(wl.id);
+                        setActiveTab('feed');
+                      }}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+                      title="Visa traffar for denna bevakning"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+
                     <button
                       onClick={(e) => handleRunSingle(wl.id, e)}
                       disabled={isRunning}

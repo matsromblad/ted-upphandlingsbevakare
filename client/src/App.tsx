@@ -11,8 +11,23 @@ import { Notice, SavedTender } from './types';
 import { api } from './api';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
+function getInitialNavigationState() {
+  const params = new URLSearchParams(window.location.search);
+  const requestedView = params.get('view');
+  const requestedTab = params.get('tab');
+
+  return {
+    view: requestedView === 'watchlists' || requestedView === 'pipeline' || requestedView === 'cpv-profile'
+      ? requestedView
+      : 'search',
+    watchlistId: params.get('watchlist'),
+    watchlistsTab: requestedTab === 'profiles' ? 'profiles' : 'feed'
+  } as const;
+}
+
 export const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<'search' | 'watchlists' | 'pipeline' | 'cpv-profile'>('search');
+  const initialNavigation = getInitialNavigationState();
+  const [currentView, setCurrentView] = useState<'search' | 'watchlists' | 'pipeline' | 'cpv-profile'>(initialNavigation.view);
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('ted_dark_mode') === 'true' ||
       window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -126,6 +141,8 @@ export const App: React.FC = () => {
             savedTenders={savedTenders}
             onTenderSaved={loadPipelineAndWatchlists}
             onWatchlistChanged={loadPipelineAndWatchlists}
+            initialSelectedWatchlistId={initialNavigation.watchlistId}
+            initialTab={initialNavigation.watchlistsTab}
           />
         )}
 

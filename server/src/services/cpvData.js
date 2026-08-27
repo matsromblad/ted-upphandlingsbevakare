@@ -74,11 +74,15 @@ export const CPV_CATEGORIES = [
     nameSwe: 'Arkitekt-, bygg-, ingenjörs- och besiktningstjänster',
     nameEng: 'Architectural, construction, engineering and inspection services',
     icon: 'Compass',
-    keywords: ['arkitekt', 'ingenjör', 'konstruktör', 'projektledning', 'besiktning', 'provning'],
+    keywords: ['arkitekt', 'ingenjör', 'konstruktör', 'projektledning', 'besiktning', 'provning', 'bim', 'vdc', 'cad', 'modellering', 'digital tvilling', 'samordning', 'samhällsbyggnad', 'projektering'],
     subcategories: [
       { code: '71200000', nameSwe: 'Arkitekttjänster' },
+      { code: '71240000', nameSwe: 'Arkitekt-, ingenjörs- och planeringstjänster' },
       { code: '71300000', nameSwe: 'Ingenjörstjänster' },
+      { code: '71320000', nameSwe: 'Tekniska projekteringstjänster' },
+      { code: '71356400', nameSwe: 'Teknisk planering' },
       { code: '71500000', nameSwe: 'Byggrelaterade tjänster (projektledning, kontroll)' },
+      { code: '71541000', nameSwe: 'Byggledningskonsulter och BIM-ledning' },
       { code: '71600000', nameSwe: 'Teknisk provning, analys och konsultation' }
     ]
   },

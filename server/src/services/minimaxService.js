@@ -9,6 +9,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 dotenv.config();
 
+// Avoid SSL certificate errors in corporate proxy environments on Windows
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === undefined) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || 'sk-cp-Zhc7qIMRagWgKUT4QssK0nfI3qodAr_XiPB3mhtxUH-o7kuQxrWPHHYoZ-fKOI2dPvu2r-7sIz-h7HYqCRIHwCrP9T2iRNZgRfKgV-JZK7XQJmmDkithgnA';
 const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-M3';
 const MINIMAX_BASE_URL = process.env.MINIMAX_BASE_URL || 'https://api.minimax.io/anthropic/v1';
@@ -77,11 +82,16 @@ export async function naturalLanguageToFilters(userPrompt) {
   const systemPrompt = `Du är en expert på offentlig upphandling i Sverige och EU samt TED (Tenders Electronic Daily).
 Ditt uppdrag är att omvandla användarens sökfras eller beskrivning till strukturerade sökfilter och CPV-koder.
 
+VIKTIGT OM NYCKELORD OCH LOGIK:
+- Fältet "keywords" ska innehålla relevanta sökord och synonymer. Om flera alternativa synonymer finns, separera dem med " OR " (t.ex. "BIM OR BIM-samordning OR 3D-modellering" eller "cybersäkerhet OR IT-säkerhet").
+- Om sökningen berör BIM/bygg/teknik/arkitektur, välj relevanta CPV-koder från division 71 (t.ex. 71300000, 71240000, 71320000, 71541000) och division 72 (t.ex. 72224000).
+- Om sökningen berör IT/mjukvara, välj koder från division 72 eller 48.
+
 Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodblock, endast ren JSON):
 {
-  "keywords": "relevanta nyckelord separerade med mellanslag eller OR (t.ex. 'cybersäkerhet OR IT-säkerhet')",
+  "keywords": "relevanta nyckelord separerade med OR (t.ex. 'BIM OR BIM-samordning OR 3D-modellering')",
   "titleKeyword": "valfritt specifikt ord i titeln eller tom sträng",
-  "cpv": ["8-siffriga CPV-koder relevanta för området, t.ex. '72000000', '72200000'"],
+  "cpv": ["8-siffriga CPV-koder relevanta för området, t.ex. '71300000', '71240000'"],
   "countries": ["landskoder i ISO-3, t.ex. 'SWE', 'DNK', 'NOR'"],
   "formType": "competition | planning | result | ALL",
   "datePreset": "1d | 7d | 14d | 30d | 90d | 365d",
@@ -101,20 +111,22 @@ Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodb
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
     }
+    const isBim = /bim|vdc|modellering|cad|projektering|samordning/i.test(userPrompt);
     return {
       keywords: userPrompt,
-      cpv: ['72000000'],
+      cpv: isBim ? ['71300000', '71240000', '71320000'] : ['71300000'],
       countries: ['SWE'],
       formType: 'competition',
       datePreset: '30d',
-      explanation: 'Generiska filter skapade baserat på din sökning.',
+      explanation: 'Sökfilter skapade baserat på din sökning.',
       suggestedWatchlistName: userPrompt.slice(0, 30)
     };
   } catch (e) {
     console.error('Failed to parse natural language query with MiniMax:', e);
+    const isBim = /bim|vdc|modellering|cad|projektering|samordning/i.test(userPrompt);
     return {
       keywords: userPrompt,
-      cpv: [],
+      cpv: isBim ? ['71300000', '71240000', '71320000'] : ['71300000'],
       countries: ['SWE'],
       formType: 'competition',
       datePreset: '30d',
@@ -130,11 +142,17 @@ Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodb
 export async function analyzeTender(notice, companyProfile = null) {
   const profileContext = companyProfile ? `
 Företagsprofil:
-- Företagsnamn: ${companyProfile.name || 'Ej angivet'}
-- Verksamhet: ${companyProfile.description || 'Allmän IT/tjänster'}
-- Kärnkompetenser/Nyckelord: ${companyProfile.keywords || ''}
+- Företagsnamn: ${companyProfile.name || 'WSP Sverige AB (BIM-enheten)'}
+- Verksamhet: ${companyProfile.description || 'Samhällsbyggnadskonsult inom BIM, VDC, digital informationshantering och projektering'}
+- Kärnkompetenser/Nyckelord: ${companyProfile.keywords || 'BIM, BIM-samordning, VDC, Building Information Modeling, 3D-modellering'}
 - Prioriterade länder: ${companyProfile.preferred_countries || '["SWE"]'}
-` : 'Ingen specifik företagsprofil angiven.';
+` : `
+Företagsprofil:
+- Företagsnamn: WSP Sverige AB (BIM-enheten)
+- Verksamhet: Samhällsbyggnadskonsult inom BIM, VDC, digital informationshantering, digitala tvillingar och projekteringsledning
+- Kärnkompetenser/Nyckelord: BIM, BIM-samordning, VDC, Building Information Modeling, 3D-modellering, CAD, samhällsbyggnad
+- Prioriterade länder: ["SWE"]
+`;
 
   const tenderContext = `
 Upphandlingsinformation:
@@ -219,8 +237,8 @@ Du hjälper användaren att:
 5. Skapa optimerade bevakningsprofiler
 
 Användarens företag:
-- Företagsnamn: ${profile.name || 'Vår Verksamhet AB'}
-- Verksamhet & Nyckelord: ${profile.keywords || profile.description || 'IT & Digitalisering'}
+- Företagsnamn: ${profile.name || 'WSP Sverige AB (BIM-enheten)'}
+- Verksamhet & Nyckelord: ${profile.keywords || profile.description || 'BIM, BIM-samordning, VDC, 3D-modellering, digital informationshantering, Samhällsbyggnad'}
 `;
 
   if (currentNotice) {

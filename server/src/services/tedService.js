@@ -21,6 +21,66 @@ const DEFAULT_FIELDS = [
 ];
 
 /**
+ * Parses free text / keyword input into proper TED Expert Query clauses.
+ * Handles:
+ *  - "term1 OR term2 OR term3" -> (field ~ (term1) OR field ~ (term2) OR field ~ (term3))
+ *  - "term1, term2, term3"     -> (field ~ (term1) OR field ~ (term2) OR field ~ (term3))
+ *  - "term1 AND term2"         -> (field ~ (term1) AND field ~ (term2))
+ *  - ["term1", "term2"]        -> (field ~ (term1) OR field ~ (term2))
+ *  - "\"phrase\" OR term"      -> (field ~ (phrase) OR field ~ (term))
+ */
+export function parseTextFieldQuery(field, input) {
+  if (!input) return null;
+  const rawArray = Array.isArray(input) ? input : [input];
+
+  const allClauses = [];
+
+  for (const raw of rawArray) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+
+    // Check if expression uses explicit AND / och / && without OR / comma
+    const hasOrOrComma = /\s+(?:OR|eller|\|\|)\s+|,/i.test(trimmed);
+    const hasAnd = /\s+(?:AND|och|&&)\s+/i.test(trimmed);
+
+    if (hasAnd && !hasOrOrComma) {
+      const andParts = trimmed
+        .split(/\s+(?:AND|och|&&)\s+/i)
+        .map(s => s.trim().replace(/^['"]|['"]$/g, '').replace(/[()]/g, '').trim())
+        .filter(Boolean);
+
+      if (andParts.length === 1) {
+        allClauses.push(`${field} ~ (${andParts[0]})`);
+      } else if (andParts.length > 1) {
+        const inner = andParts.map(v => `${field} ~ (${v})`).join(' AND ');
+        allClauses.push(`(${inner})`);
+      }
+      continue;
+    }
+
+    // Default: split by OR / eller / || / comma / newline
+    const orParts = trimmed
+      .split(/\s+(?:OR|eller|\|\|)\s+|,\s*|\n/i)
+      .map(s => s.trim().replace(/^['"]|['"]$/g, '').replace(/[()]/g, '').trim())
+      .filter(Boolean);
+
+    if (orParts.length === 1) {
+      allClauses.push(`${field} ~ (${orParts[0]})`);
+    } else if (orParts.length > 1) {
+      const inner = orParts.map(v => `${field} ~ (${v})`).join(' OR ');
+      allClauses.push(`(${inner})`);
+    }
+  }
+
+  if (allClauses.length === 0) return null;
+  if (allClauses.length === 1) {
+    return allClauses[0];
+  }
+  return `(${allClauses.join(' OR ')})`;
+}
+
+/**
  * Builds TED Expert Query string from structured filter parameters
  */
 export function buildExpertQuery(filters = {}) {
@@ -31,33 +91,51 @@ export function buildExpertQuery(filters = {}) {
     return filters.rawQuery.trim();
   }
 
-  // Country filter
+  // Automatic TED publication number detection (e.g., '489981-2026' or TED URLs)
+  const rawKw = (typeof filters.keywords === 'string' ? filters.keywords : '').trim();
+  const urlPubNumMatch = rawKw.match(/notice\/(?:-\/detail\/)?(\d{5,8})[-/](\d{4})/i);
+  const directPubNumMatch = rawKw.match(/^(\d{5,8})[-/](\d{4})$/);
+  const detectedPubNum = directPubNumMatch ? `${directPubNumMatch[1]}-${directPubNumMatch[2]}` : (urlPubNumMatch ? `${urlPubNumMatch[1]}-${urlPubNumMatch[2]}` : null);
+
+  if (detectedPubNum) {
+    return `publication-number = ${detectedPubNum}`;
+  }
+
+  // Country filter: Match either buyer-country or place-of-performance
+  // Notice: eForms often set place-of-performance to 'anyw' or NUTS codes, so buyer-country is crucial!
   if (filters.countries && filters.countries.length > 0) {
     const validCountries = filters.countries.filter(c => c && c.trim()).map(c => c.trim().toUpperCase());
     if (validCountries.length > 0) {
-      parts.push(`place-of-performance IN (${validCountries.join(', ')})`);
+      const countryList = validCountries.join(', ');
+      parts.push(`(buyer-country IN (${countryList}) OR place-of-performance IN (${countryList}))`);
     }
   } else if (!filters.allCountries) {
     // Default to Sweden if not specified
-    parts.push('place-of-performance IN (SWE)');
+    parts.push('(buyer-country IN (SWE) OR place-of-performance IN (SWE))');
   }
 
   // Keywords (Free text search)
-  if (filters.keywords && filters.keywords.trim()) {
-    const cleanKw = filters.keywords.trim().replace(/[()]/g, '');
-    parts.push(`FT ~ (${cleanKw})`);
+  if (filters.keywords) {
+    const kwClause = parseTextFieldQuery('FT', filters.keywords);
+    if (kwClause) {
+      parts.push(kwClause);
+    }
   }
 
   // Title keyword
-  if (filters.titleKeyword && filters.titleKeyword.trim()) {
-    const cleanTitle = filters.titleKeyword.trim().replace(/[()]/g, '');
-    parts.push(`notice-title ~ (${cleanTitle})`);
+  if (filters.titleKeyword) {
+    const titleClause = parseTextFieldQuery('notice-title', filters.titleKeyword);
+    if (titleClause) {
+      parts.push(titleClause);
+    }
   }
 
   // Buyer name
-  if (filters.buyer && filters.buyer.trim()) {
-    const cleanBuyer = filters.buyer.trim().replace(/[()]/g, '');
-    parts.push(`organisation-name-buyer ~ (${cleanBuyer})`);
+  if (filters.buyer) {
+    const buyerClause = parseTextFieldQuery('organisation-name-buyer', filters.buyer);
+    if (buyerClause) {
+      parts.push(buyerClause);
+    }
   }
 
   // CPV codes
@@ -78,7 +156,7 @@ export function buildExpertQuery(filters = {}) {
     // Format YYYYMMDD
     const dateStr = filters.dateFrom.replace(/[-]/g, '').substring(0, 8);
     parts.push(`publication-date >= ${dateStr}`);
-  } else if (filters.datePreset) {
+  } else if (filters.datePreset && filters.datePreset !== 'all') {
     const now = new Date();
     let daysAgo = 30;
     if (filters.datePreset === '1d') daysAgo = 1;
@@ -94,7 +172,7 @@ export function buildExpertQuery(filters = {}) {
   }
 
   if (parts.length === 0) {
-    return 'place-of-performance IN (SWE)';
+    return '(buyer-country IN (SWE) OR place-of-performance IN (SWE))';
   }
 
   return parts.join(' AND ');
@@ -200,9 +278,14 @@ export function normalizeNotice(notice) {
   const tedHtmlUrl = htmlLinks.SWE || htmlLinks.ENG || (htmlLinks && Object.values(htmlLinks)[0]) || `https://ted.europa.eu/sv/notice/-/detail/${pubNum}`;
   const tedPdfUrl = pdfLinks.SWE || pdfLinks.ENG || (pdfLinks && Object.values(pdfLinks)[0]) || `https://ted.europa.eu/sv/notice/${pubNum}/pdf`;
   
-  const submissionUrl = notice['submission-url-lot'] || null;
-  const documentUrl = notice['document-url-lot'] || null;
-  const buyerProfile = notice['buyer-profile'] || null;
+  let submissionUrl = notice['submission-url-lot'] || null;
+  if (Array.isArray(submissionUrl)) submissionUrl = submissionUrl[0] || null;
+
+  let documentUrl = notice['document-url-lot'] || null;
+  if (Array.isArray(documentUrl)) documentUrl = documentUrl[0] || null;
+
+  let buyerProfile = notice['buyer-profile'] || null;
+  if (Array.isArray(buyerProfile)) buyerProfile = buyerProfile[0] || null;
 
   const formType = notice['form-type'] || notice['notice-type'] || 'competition';
 
@@ -240,12 +323,16 @@ export async function searchTedNotices(filters = {}, pagination = { page: 1, lim
   const page = Math.max(1, parseInt(pagination.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(pagination.limit) || 20));
 
+  // If query is a direct publication number search, default scope to ALL so historical notices are found
+  const isDirectIdSearch = query.startsWith('publication-number =');
+  const scope = filters.scope || (isDirectIdSearch ? 'ALL' : 'ACTIVE');
+
   const payload = {
     query,
     fields: DEFAULT_FIELDS,
     limit,
     page,
-    scope: 'ACTIVE',
+    scope,
     paginationMode: 'PAGE_NUMBER'
   };
 

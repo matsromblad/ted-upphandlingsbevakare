@@ -1,10 +1,49 @@
 import { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { supabaseAdmin, isSupabaseConfigured } from './supabase.js';
+import { buildExpertQuery } from './services/tedService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Default profile for WSP Sverige / BIM unit
+export const DEFAULT_COMPANY_PROFILE = {
+  name: 'WSP Sverige AB (BIM-enheten)',
+  description: 'WSP Sverige AB är ett ledande analys- och teknikkonsultföretag. BIM-enheten arbetar med BIM-samordning, digital informationshantering, 3D/4D/5D-modellering, VDC, GIS-integration, digitala tvillingar och projekteringsledning inom husbyggnad, anläggning och infrastruktur.',
+  keywords: 'BIM, BIM-samordning, VDC, Building Information Modeling, digital informationshantering, 3D-modellering, CAD, digital tvilling, projektering, samhällsbyggnad',
+  preferred_cpv: ['71300000', '71240000', '71320000', '71541000', '72224000'],
+  preferred_countries: ['SWE'],
+  min_value: 0
+};
+
+// Default watchlists tailored for BIM / WSP unit
+export const DEFAULT_WATCHLISTS = [
+  {
+    name: 'BIM & Digital Informationshantering (Sverige)',
+    filters: {
+      keywords: 'BIM OR VDC OR "Building Information Modeling" OR "digital tvilling"',
+      countries: ['SWE'],
+      formType: 'competition',
+      datePreset: '30d'
+    },
+    interval_minutes: 60,
+    email_frequency: 'daily'
+  },
+  {
+    name: 'BIM-samordning & Projekteringsstöd (Sverige)',
+    filters: {
+      keywords: 'BIM-samordnare OR BIM-ledare OR CAD-samordning',
+      cpv: ['71300000', '71240000', '71320000'],
+      countries: ['SWE'],
+      formType: 'competition',
+      datePreset: '30d'
+    },
+    interval_minutes: 60,
+    email_frequency: 'daily'
+  }
+];
 
 // Local SQLite fallback instance
 const dbPath = path.join(__dirname, '..', 'ted_monitor.db');
@@ -16,10 +55,10 @@ localDb.exec(`
     id TEXT PRIMARY KEY,
     email TEXT,
     full_name TEXT,
-    company_name TEXT DEFAULT 'Mitt Företag AB',
-    description TEXT DEFAULT '',
-    keywords TEXT DEFAULT 'IT-konsult, systemutveckling, molntjänster, cybersäkerhet',
-    preferred_cpv TEXT DEFAULT '["72000000", "72200000"]',
+    company_name TEXT DEFAULT 'WSP Sverige AB (BIM-enheten)',
+    description TEXT DEFAULT 'WSP Sverige AB är ett ledande analys- och teknikkonsultföretag. BIM-enheten arbetar med BIM-samordning, digital informationshantering, 3D/4D/5D-modellering, VDC, GIS-integration, digitala tvillingar och projekteringsledning inom husbyggnad, anläggning och infrastruktur.',
+    keywords TEXT DEFAULT 'BIM, BIM-samordning, VDC, Building Information Modeling, digital informationshantering, 3D-modellering, CAD, digital tvilling, projektering, samhällsbyggnad',
+    preferred_cpv TEXT DEFAULT '["71300000", "71240000", "71320000", "71541000", "72224000"]',
     preferred_countries TEXT DEFAULT '["SWE"]',
     min_value INTEGER DEFAULT 0,
     updated_at TEXT DEFAULT (datetime('now', 'localtime'))
@@ -33,6 +72,9 @@ localDb.exec(`
     filters_json TEXT NOT NULL,
     active INTEGER DEFAULT 1,
     interval_minutes INTEGER DEFAULT 60,
+    email_frequency TEXT NOT NULL DEFAULT 'daily',
+    last_email_sent_at TEXT,
+    unsubscribe_token TEXT,
     last_run_at TEXT,
     last_hit_count INTEGER DEFAULT 0,
     new_count INTEGER DEFAULT 0,
@@ -47,6 +89,7 @@ localDb.exec(`
     notice_data_json TEXT NOT NULL,
     is_read INTEGER DEFAULT 0,
     is_saved INTEGER DEFAULT 0,
+    emailed_at TEXT,
     discovered_at TEXT DEFAULT (datetime('now', 'localtime')),
     UNIQUE(user_id, watchlist_id, notice_id)
   );
@@ -94,14 +137,128 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn('watchlists', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+ensureColumn('watchlists', 'email_frequency', "TEXT NOT NULL DEFAULT 'daily'");
+ensureColumn('watchlists', 'last_email_sent_at', 'TEXT');
+ensureColumn('watchlists', 'unsubscribe_token', 'TEXT');
 ensureColumn('watchlist_hits', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+ensureColumn('watchlist_hits', 'emailed_at', 'TEXT');
 ensureColumn('saved_tenders', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
 ensureColumn('chat_messages', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
+
+// Update legacy placeholder profiles to WSP Sverige AB (BIM-enheten)
+try {
+  localDb.exec(`
+    UPDATE profiles
+    SET company_name = '${DEFAULT_COMPANY_PROFILE.name}',
+        description = '${DEFAULT_COMPANY_PROFILE.description}',
+        keywords = '${DEFAULT_COMPANY_PROFILE.keywords}',
+        preferred_cpv = '${JSON.stringify(DEFAULT_COMPANY_PROFILE.preferred_cpv)}',
+        preferred_countries = '${JSON.stringify(DEFAULT_COMPANY_PROFILE.preferred_countries)}'
+    WHERE company_name = 'Mitt Företag AB' OR company_name IS NULL OR company_name = '';
+  `);
+} catch (e) {
+  // Ignore migration error
+}
+
+const WATCHLIST_EMAIL_FREQUENCIES = new Set(['daily', 'weekly']);
+
+function deriveWatchlistEmailFrequency(watchlist) {
+  if (WATCHLIST_EMAIL_FREQUENCIES.has(watchlist?.email_frequency)) {
+    return watchlist.email_frequency;
+  }
+
+  return Number(watchlist?.interval_minutes) >= 7 * 24 * 60 ? 'weekly' : 'daily';
+}
+
+async function persistWatchlistMetadata(id, userId, patch) {
+  if (isSupabaseConfigured) {
+    const { error } = await supabaseAdmin
+      .from('watchlists')
+      .update(patch)
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  const existing = localDb.prepare('SELECT email_frequency, last_email_sent_at, unsubscribe_token FROM watchlists WHERE id = ? AND user_id = ?').get(id, userId);
+  if (!existing) {
+    return;
+  }
+
+  localDb.prepare(`
+    UPDATE watchlists
+    SET email_frequency = ?, last_email_sent_at = ?, unsubscribe_token = ?
+    WHERE id = ? AND user_id = ?
+  `).run(
+    patch.email_frequency ?? existing.email_frequency,
+    patch.last_email_sent_at ?? existing.last_email_sent_at ?? null,
+    patch.unsubscribe_token ?? existing.unsubscribe_token ?? null,
+    id,
+    userId
+  );
+}
+
+async function normalizeWatchlistRecord(watchlist) {
+  if (!watchlist) {
+    return null;
+  }
+
+  const patch = {};
+  const emailFrequency = deriveWatchlistEmailFrequency(watchlist);
+  if (watchlist.email_frequency !== emailFrequency) {
+    patch.email_frequency = emailFrequency;
+  }
+
+  if (!watchlist.unsubscribe_token) {
+    patch.unsubscribe_token = randomUUID();
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await persistWatchlistMetadata(watchlist.id, watchlist.user_id, patch);
+  }
+
+  return {
+    ...watchlist,
+    ...patch,
+    filters_json: typeof watchlist.filters_json === 'object' ? JSON.stringify(watchlist.filters_json) : watchlist.filters_json,
+    email_frequency: patch.email_frequency || emailFrequency
+  };
+}
+
+async function normalizeWatchlistCollection(watchlists) {
+  return Promise.all((watchlists || []).map(normalizeWatchlistRecord));
+}
 
 // ==============================================================================
 // WATCHLISTS DAO (Supabase + Local SQLite)
 // ==============================================================================
 export const watchlistDao = {
+  seedDefaults: async (userId) => {
+    const createdList = [];
+    for (const def of DEFAULT_WATCHLISTS) {
+      const id = 'wl-' + randomUUID().substring(0, 8);
+      const query = buildExpertQuery(def.filters);
+      const item = {
+        id,
+        user_id: userId,
+        name: def.name,
+        query,
+        filters_json: JSON.stringify(def.filters),
+        active: 1,
+        interval_minutes: def.interval_minutes || 60,
+        email_frequency: def.email_frequency || 'daily'
+      };
+      const created = await watchlistDao.create(item);
+      createdList.push(created);
+    }
+    return createdList;
+  },
+
   getAll: async (userId) => {
     if (isSupabaseConfigured) {
       const { data, error } = await supabaseAdmin
@@ -110,12 +267,17 @@ export const watchlistDao = {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []).map(w => ({
-        ...w,
-        filters_json: typeof w.filters_json === 'object' ? JSON.stringify(w.filters_json) : w.filters_json
-      }));
+      if (!data || data.length === 0) {
+        return watchlistDao.seedDefaults(userId);
+      }
+      return normalizeWatchlistCollection(data || []);
     }
-    return localDb.prepare('SELECT * FROM watchlists WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+
+    const rows = localDb.prepare('SELECT * FROM watchlists WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+    if (!rows || rows.length === 0) {
+      return watchlistDao.seedDefaults(userId);
+    }
+    return normalizeWatchlistCollection(rows);
   },
 
   getAllActiveSystem: async () => {
@@ -125,12 +287,11 @@ export const watchlistDao = {
         .select('*')
         .eq('active', true);
       if (error) throw error;
-      return (data || []).map(w => ({
-        ...w,
-        filters_json: typeof w.filters_json === 'object' ? JSON.stringify(w.filters_json) : w.filters_json
-      }));
+      return normalizeWatchlistCollection(data || []);
     }
-    return localDb.prepare('SELECT * FROM watchlists WHERE active = 1').all();
+
+    const rows = localDb.prepare('SELECT * FROM watchlists WHERE active = 1').all();
+    return normalizeWatchlistCollection(rows);
   },
 
   getById: async (id, userId) => {
@@ -138,16 +299,33 @@ export const watchlistDao = {
       let query = supabaseAdmin.from('watchlists').select('*').eq('id', id);
       if (userId) query = query.eq('user_id', userId);
       const { data } = await query.single();
-      if (!data) return null;
-      return {
-        ...data,
-        filters_json: typeof data.filters_json === 'object' ? JSON.stringify(data.filters_json) : data.filters_json
-      };
+      return normalizeWatchlistRecord(data);
     }
     if (userId) {
-      return localDb.prepare('SELECT * FROM watchlists WHERE id = ? AND user_id = ?').get(id, userId);
+      const row = localDb.prepare('SELECT * FROM watchlists WHERE id = ? AND user_id = ?').get(id, userId);
+      return normalizeWatchlistRecord(row);
     }
-    return localDb.prepare('SELECT * FROM watchlists WHERE id = ?').get(id);
+    const row = localDb.prepare('SELECT * FROM watchlists WHERE id = ?').get(id);
+    return normalizeWatchlistRecord(row);
+  },
+
+  getByUnsubscribeToken: async (token) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlists')
+        .select('*')
+        .eq('unsubscribe_token', token)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return normalizeWatchlistRecord(data);
+    }
+
+    const row = localDb.prepare('SELECT * FROM watchlists WHERE unsubscribe_token = ?').get(token);
+    return normalizeWatchlistRecord(row);
   },
 
   create: async (item) => {
@@ -159,20 +337,34 @@ export const watchlistDao = {
         query: item.query,
         filters_json: typeof item.filters_json === 'string' ? JSON.parse(item.filters_json) : item.filters_json,
         active: Boolean(item.active),
-        interval_minutes: item.interval_minutes || 60
+        interval_minutes: item.interval_minutes || 60,
+        email_frequency: deriveWatchlistEmailFrequency(item),
+        unsubscribe_token: item.unsubscribe_token || randomUUID(),
+        last_email_sent_at: item.last_email_sent_at || null
       };
       const { data, error } = await supabaseAdmin.from('watchlists').insert(payload).select().single();
       if (error) throw error;
-      return {
-        ...data,
-        filters_json: JSON.stringify(data.filters_json)
-      };
+      return normalizeWatchlistRecord(data);
     }
 
     localDb.prepare(`
-      INSERT INTO watchlists (id, user_id, name, query, filters_json, active, interval_minutes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `).run(item.id, item.user_id, item.name, item.query, item.filters_json, item.active ? 1 : 0, item.interval_minutes);
+      INSERT INTO watchlists (
+        id, user_id, name, query, filters_json, active, interval_minutes,
+        email_frequency, last_email_sent_at, unsubscribe_token, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+    `).run(
+      item.id,
+      item.user_id,
+      item.name,
+      item.query,
+      item.filters_json,
+      item.active ? 1 : 0,
+      item.interval_minutes,
+      deriveWatchlistEmailFrequency(item),
+      item.last_email_sent_at || null,
+      item.unsubscribe_token || randomUUID()
+    );
     return watchlistDao.getById(item.id, item.user_id);
   },
 
@@ -183,7 +375,8 @@ export const watchlistDao = {
         query: item.query,
         filters_json: typeof item.filters_json === 'string' ? JSON.parse(item.filters_json) : item.filters_json,
         active: Boolean(item.active),
-        interval_minutes: item.interval_minutes
+        interval_minutes: item.interval_minutes,
+        email_frequency: deriveWatchlistEmailFrequency(item)
       };
       const { data, error } = await supabaseAdmin
         .from('watchlists')
@@ -193,17 +386,23 @@ export const watchlistDao = {
         .select()
         .single();
       if (error) throw error;
-      return {
-        ...data,
-        filters_json: JSON.stringify(data.filters_json)
-      };
+      return normalizeWatchlistRecord(data);
     }
 
     localDb.prepare(`
       UPDATE watchlists
-      SET name = ?, query = ?, filters_json = ?, active = ?, interval_minutes = ?
+      SET name = ?, query = ?, filters_json = ?, active = ?, interval_minutes = ?, email_frequency = ?
       WHERE id = ? AND user_id = ?
-    `).run(item.name, item.query, item.filters_json, item.active ? 1 : 0, item.interval_minutes, id, userId);
+    `).run(
+      item.name,
+      item.query,
+      item.filters_json,
+      item.active ? 1 : 0,
+      item.interval_minutes,
+      deriveWatchlistEmailFrequency(item),
+      id,
+      userId
+    );
     return watchlistDao.getById(id, userId);
   },
 
@@ -225,6 +424,49 @@ export const watchlistDao = {
       SET last_run_at = ?, last_hit_count = ?, new_count = new_count + ?
       WHERE id = ?
     `).run(lastRunAt, hitCount, newCount, id);
+  },
+
+  updateEmailSentAt: async (id, userId, sentAt) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabaseAdmin
+        .from('watchlists')
+        .update({ last_email_sent_at: sentAt })
+        .eq('id', id)
+        .eq('user_id', userId);
+
+      if (error) {
+        throw error;
+      }
+
+      return;
+    }
+
+    localDb.prepare(`
+      UPDATE watchlists
+      SET last_email_sent_at = ?
+      WHERE id = ? AND user_id = ?
+    `).run(sentAt, id, userId);
+  },
+
+  unsubscribeByToken: async (token) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlists')
+        .update({ active: false })
+        .eq('unsubscribe_token', token)
+        .select('*')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return normalizeWatchlistRecord(data);
+    }
+
+    localDb.prepare('UPDATE watchlists SET active = 0 WHERE unsubscribe_token = ?').run(token);
+    const row = localDb.prepare('SELECT * FROM watchlists WHERE unsubscribe_token = ?').get(token);
+    return normalizeWatchlistRecord(row);
   },
 
   delete: async (id, userId) => {
@@ -291,6 +533,34 @@ export const hitsDao = {
       ORDER BY h.discovered_at DESC
       LIMIT ?
     `).all(userId, limit);
+  },
+
+  getPendingEmailHits: async (watchlistId, userId, limit = 250) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlist_hits')
+        .select('*')
+        .eq('watchlist_id', watchlistId)
+        .eq('user_id', userId)
+        .is('emailed_at', null)
+        .order('discovered_at', { ascending: true })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return (data || []).map(h => ({
+        ...h,
+        notice_data_json: typeof h.notice_data_json === 'object' ? JSON.stringify(h.notice_data_json) : h.notice_data_json
+      }));
+    }
+
+    return localDb.prepare(`
+      SELECT *
+      FROM watchlist_hits
+      WHERE watchlist_id = ? AND user_id = ? AND emailed_at IS NULL
+      ORDER BY discovered_at ASC
+      LIMIT ?
+    `).all(watchlistId, userId, limit);
   },
 
   insertHit: async (hit) => {
@@ -369,6 +639,33 @@ export const hitsDao = {
       localDb.prepare('UPDATE watchlist_hits SET is_read = 1 WHERE user_id = ?').run(userId);
       localDb.prepare('UPDATE watchlists SET new_count = 0 WHERE user_id = ?').run(userId);
     }
+  },
+
+  markAsEmailed: async (hitIds, userId, emailedAt) => {
+    if (!hitIds.length) {
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabaseAdmin
+        .from('watchlist_hits')
+        .update({ emailed_at: emailedAt })
+        .eq('user_id', userId)
+        .in('id', hitIds);
+
+      if (error) {
+        throw error;
+      }
+
+      return;
+    }
+
+    const placeholders = hitIds.map(() => '?').join(', ');
+    localDb.prepare(`
+      UPDATE watchlist_hits
+      SET emailed_at = ?
+      WHERE user_id = ? AND id IN (${placeholders})
+    `).run(emailedAt, userId, ...hitIds);
   },
 
   getUnreadCount: async (userId) => {
@@ -601,44 +898,36 @@ export const profileDao = {
   get: async (userId) => {
     if (isSupabaseConfigured) {
       const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).single();
-      if (!data) {
+      if (!data || !data.company_name || data.company_name === 'Mitt Företag AB') {
         return {
           id: userId,
-          name: 'Mitt Företag AB',
-          description: '',
-          keywords: 'IT-konsult, systemutveckling, molntjänster',
-          preferred_cpv: ['72000000', '72200000'],
-          preferred_countries: ['SWE'],
-          min_value: 0
+          ...DEFAULT_COMPANY_PROFILE
         };
       }
       return {
         id: data.id,
-        name: data.company_name || 'Mitt Företag AB',
-        description: data.description || '',
-        keywords: data.keywords || '',
-        preferred_cpv: data.preferred_cpv || ['72000000', '72200000'],
-        preferred_countries: data.preferred_countries || ['SWE'],
+        name: data.company_name || DEFAULT_COMPANY_PROFILE.name,
+        description: data.description || DEFAULT_COMPANY_PROFILE.description,
+        keywords: data.keywords || DEFAULT_COMPANY_PROFILE.keywords,
+        preferred_cpv: data.preferred_cpv || DEFAULT_COMPANY_PROFILE.preferred_cpv,
+        preferred_countries: data.preferred_countries || DEFAULT_COMPANY_PROFILE.preferred_countries,
         min_value: data.min_value || 0
       };
     }
 
     const row = localDb.prepare('SELECT * FROM profiles WHERE id = ?').get(userId);
-    if (!row) {
+    if (!row || !row.company_name || row.company_name === 'Mitt Företag AB') {
       return {
         id: userId,
-        name: 'Mitt Företag AB',
-        description: '',
-        keywords: 'IT-konsult, systemutveckling, molntjänster',
-        preferred_cpv: ['72000000', '72200000'],
-        preferred_countries: ['SWE'],
-        min_value: 0
+        ...DEFAULT_COMPANY_PROFILE
       };
     }
     return {
       ...row,
-      name: row.company_name || 'Mitt Företag AB',
-      preferred_cpv: JSON.parse(row.preferred_cpv || '[]'),
+      name: row.company_name || DEFAULT_COMPANY_PROFILE.name,
+      description: row.description || DEFAULT_COMPANY_PROFILE.description,
+      keywords: row.keywords || DEFAULT_COMPANY_PROFILE.keywords,
+      preferred_cpv: JSON.parse(row.preferred_cpv || JSON.stringify(DEFAULT_COMPANY_PROFILE.preferred_cpv)),
       preferred_countries: JSON.parse(row.preferred_countries || '["SWE"]')
     };
   },
@@ -681,6 +970,33 @@ export const profileDao = {
       data.min_value || 0
     );
     return profileDao.get(userId);
+  },
+
+  getNotificationRecipient: async (userId) => {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('email, full_name, company_name')
+        .eq('id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return {
+        email: data?.email || null,
+        fullName: data?.full_name || '',
+        companyName: data?.company_name || 'Mitt Företag AB'
+      };
+    }
+
+    const row = localDb.prepare('SELECT email, full_name, company_name FROM profiles WHERE id = ?').get(userId);
+    return {
+      email: row?.email || 'lokal@anvandare.se',
+      fullName: row?.full_name || 'Lokal Användare',
+      companyName: row?.company_name || 'Mitt Företag AB'
+    };
   }
 };
 

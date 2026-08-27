@@ -10,9 +10,16 @@ dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 dotenv.config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const isPlaceholder = (val) => !val || val.includes('ditt-projekt') || val.includes('din_supabase') || val.includes('your_');
+
+export const isSupabaseConfigured = Boolean(
+  SUPABASE_URL &&
+  SUPABASE_SERVICE_ROLE_KEY &&
+  !isPlaceholder(SUPABASE_URL) &&
+  !isPlaceholder(SUPABASE_SERVICE_ROLE_KEY)
+);
 
 export const supabaseAdmin = isSupabaseConfigured
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

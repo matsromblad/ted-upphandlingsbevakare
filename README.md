@@ -32,6 +32,7 @@ En fullstack-applikation för att söka, bevaka och analysera offentliga upphand
 - **🔔 Automatiska Bevakningsprofiler & Bakgrundspollning**:
   - Skapa sparade bevakningar med egna filter.
   - Inbyggd bakgrundsmotor som automatiskt pollar TED och flaggar **nya upphandlingar** med olästa badges.
+  - Skicka sammanfattningsmail **dagligen eller veckovis** med alla nya relevanta upphandlingar samt länkar för att öppna bevakningen eller avregistrera den.
   - Export av träffar till **Excel (XLSX)**, CSV och JSON.
 
 - **📋 Anbudspipeline (Kanban-tavla)**:
@@ -50,7 +51,7 @@ En fullstack-applikation för att söka, bevaka och analysera offentliga upphand
 ## 🛠️ Teknisk Stack
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Date-fns, React-Markdown, `@supabase/supabase-js`.
-- **Backend**: Node.js, Express, `@supabase/supabase-js`, inbyggd SQLite fallback, Node-Cron, XLSX, Dotenv.
+- **Backend**: Node.js, Express, `@supabase/supabase-js`, inbyggd SQLite fallback, Node-Cron, Mailtrap Email API, XLSX, Dotenv.
 - **AI / LLM**: MiniMax-M3 (Anthropic-kompatibelt API).
 - **Databas & Auth**: Supabase (PostgreSQL med RLS & Auth SSO).
 - **Datakälla**: Publications Office of the European Union – TED API v3.
@@ -83,6 +84,15 @@ MINIMAX_API_KEY=din_minimax_api_nyckel
 MINIMAX_MODEL=MiniMax-M3
 MINIMAX_BASE_URL=https://api.minimax.io/anthropic/v1
 TED_API_URL=https://api.ted.europa.eu/v3/notices/search
+APP_BASE_URL=http://localhost:5173
+API_BASE_URL=http://localhost:3001
+
+# Mailtrap Email API för bevakningar
+MAILTRAP_API_URL=https://send.api.mailtrap.io/api/send
+MAILTRAP_API_TOKEN=<YOUR_API_TOKEN>
+MAILTRAP_FROM_EMAIL=hello@demomailtrap.co
+MAILTRAP_FROM_NAME=Mailtrap Test
+MAILTRAP_CATEGORY=Watchlist Digest
 
 # Supabase
 SUPABASE_URL=https://ditt-projekt.supabase.co

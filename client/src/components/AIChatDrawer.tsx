@@ -44,9 +44,9 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
         'Hur bör vi strukturera vårt anbud för att vinna denna upphandling?'
       ]
     : [
-        'Hitta IT-konsultupphandlingar och systemutveckling i Sverige.',
-        'Vilka är de vanligaste misstagen företag gör i offentliga anbud?',
-        'Skapa en bevakningsprofil för cybersäkerhet och molntjänster i Norden.'
+        'Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige.',
+        'Vilka krav ställs vanligtvis på BIM- och VDC-konsulter i offentliga upphandlingar?',
+        'Skapa en bevakningsprofil för BIM, digitala tvillingar och projekteringsstöd.'
       ];
 
   useEffect(() => {

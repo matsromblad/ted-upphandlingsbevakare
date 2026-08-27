@@ -1,7 +1,8 @@
 export type FormType = 'competition' | 'planning' | 'result' | 'ALL';
-export type DatePreset = '1d' | '7d' | '14d' | '30d' | '90d' | '365d' | 'custom';
+export type DatePreset = '1d' | '7d' | '14d' | '30d' | '90d' | '365d' | 'all' | 'custom';
 export type TenderStatus = 'INBOX' | 'REVIEWING' | 'DECIDED_TO_BID' | 'PREPARING_BID' | 'SUBMITTED' | 'WON' | 'LOST' | 'ARCHIVED';
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type WatchlistEmailFrequency = 'daily' | 'weekly';
 
 export interface CpvItem {
   code: string;
@@ -54,7 +55,9 @@ export interface Watchlist {
   filters?: NoticeFilters;
   active: number | boolean;
   interval_minutes: number;
+   email_frequency: WatchlistEmailFrequency;
   last_run_at?: string;
+   last_email_sent_at?: string;
   last_hit_count: number;
   new_count: number;
   created_at: string;

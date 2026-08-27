@@ -133,7 +133,7 @@ export const CpvAndProfileView: React.FC = () => {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="t.ex. Acuvia IT AB"
+              placeholder="t.ex. WSP Sverige AB (BIM-enheten)"
               required
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
             />
@@ -145,7 +145,7 @@ export const CpvAndProfileView: React.FC = () => {
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Kort sammanfattning av vad ert företag erbjuder, tjänster, produkter och målgrupp..."
+              placeholder="Beskrivning av företagets och BIM-enhetens tjänster, t.ex. BIM-samordning, VDC, 3D/4D/5D-modellering, GIS och digital informationshantering..."
               className="w-full p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
             />
           </div>
@@ -156,7 +156,7 @@ export const CpvAndProfileView: React.FC = () => {
               type="text"
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
-              placeholder="t.ex. systemutveckling, molntjänster, IT-drift, cybersäkerhet, react, node, arkitektur..."
+              placeholder="t.ex. BIM, BIM-samordning, VDC, Building Information Modeling, 3D-modellering, CAD, digital tvilling, projektering..."
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
             />
             <p className="text-[11px] text-slate-400">

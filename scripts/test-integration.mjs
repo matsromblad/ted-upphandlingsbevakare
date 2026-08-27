@@ -53,7 +53,7 @@ async function runTests() {
     body: JSON.stringify({
       name: 'Testbevakning Cybersäkerhet',
       filters: { keywords: 'cybersäkerhet', countries: ['SWE'] },
-      intervalMinutes: 60
+      emailFrequency: 'daily'
     })
   }).then(r => r.json());
   console.log('Watchlist created:', createWlRes.watchlist?.id, createWlRes.watchlist?.name);
