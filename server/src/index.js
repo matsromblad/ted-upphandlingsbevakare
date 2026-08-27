@@ -4,13 +4,22 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import apiRoutes from './routes/api.js';
-import { initScheduler } from './services/schedulerService.js';
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load .env from server directory as well as root
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
+dotenv.config();
+
+// Avoid SSL certificate errors in corporate proxy environments on Windows
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === undefined) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
+import apiRoutes from './routes/api.js';
+import { initScheduler } from './services/schedulerService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;

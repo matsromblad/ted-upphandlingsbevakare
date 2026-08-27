@@ -178,6 +178,44 @@ export function buildExpertQuery(filters = {}) {
   return parts.join(' AND ');
 }
 
+export function parseTedDate(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+  if (!s) return null;
+
+  // 1. Direct standard parse
+  let d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+
+  // 2. Pattern: YYYY-MM-DD+HH:MM or YYYY-MM-DD-HH:MM or YYYY-MM-DDZ
+  const tzMatch = s.match(/^(\d{4}-\d{2}-\d{2})([+-]\d{2}(?::?\d{2})?|Z)$/);
+  if (tzMatch) {
+    const isoWithTime = `${tzMatch[1]}T23:59:59${tzMatch[2]}`;
+    d = new Date(isoWithTime);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 3. Pattern: YYYY-MM-DD
+  const plainMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (plainMatch) {
+    d = new Date(`${plainMatch[1]}-${plainMatch[2]}-${plainMatch[3]}T23:59:59`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 4. Pattern: YYYYMMDD
+  const compactMatch = s.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (compactMatch) {
+    d = new Date(`${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}T23:59:59`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 5. Replace space with T
+  d = new Date(s.replace(' ', 'T'));
+  if (!isNaN(d.getTime())) return d;
+
+  return null;
+}
+
 /**
  * Normalizes notice object from TED API response to clean structured format
  */
@@ -232,8 +270,8 @@ export function normalizeNotice(notice) {
   // CPV codes (deduplicated)
   const rawCpvs = notice['classification-cpv'] || [];
   const rawCpvArray = Array.isArray(rawCpvs) ? rawCpvs : [rawCpvs];
-  const uniqueCpvs = [...new Set(rawCpvArray.map(c => typeof c === 'string' ? c.trim() : String(c)).filter(Boolean))];
-  const cpvDetails = uniqueCpvs.map(code => ({
+  const cpvList = [...new Set(rawCpvArray.map(c => typeof c === 'string' ? c.trim() : String(c)).filter(Boolean))];
+  const cpvDetails = cpvList.map(code => ({
     code,
     label: getCpvLabel(code)
   }));
@@ -255,17 +293,21 @@ export function normalizeNotice(notice) {
     const dlStr = Array.isArray(rawDeadline) ? rawDeadline[0] : rawDeadline;
     if (dlStr) {
       deadline = dlStr;
-      const dlDate = new Date(dlStr);
-      if (!isNaN(dlDate.getTime())) {
+      const dlDate = parseTedDate(dlStr);
+      if (dlDate) {
         const now = new Date();
         const diffMs = dlDate.getTime() - now.getTime();
-        daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-        if (daysRemaining < 0) {
+        if (diffMs <= 0) {
           deadlineStatus = 'EXPIRED';
-        } else if (daysRemaining <= 7) {
-          deadlineStatus = 'EXPIRING_SOON';
+          const daysPassed = Math.max(1, Math.ceil(Math.abs(diffMs) / (1000 * 60 * 60 * 24)));
+          daysRemaining = -daysPassed;
         } else {
-          deadlineStatus = 'OPEN';
+          daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+          if (daysRemaining <= 7) {
+            deadlineStatus = 'EXPIRING_SOON';
+          } else {
+            deadlineStatus = 'OPEN';
+          }
         }
       }
     }

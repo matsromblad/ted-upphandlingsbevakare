@@ -7,11 +7,14 @@ import {
   Download,
   Loader2,
   Eye,
-  CheckCheck
+  CheckCheck,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
+import { getDeadlineInfo } from '../utils/dateUtils';
 
 interface WatchlistsViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -302,6 +305,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                 const notice = hit.notice;
                 if (!notice) return null;
                 const isUnread = !hit.is_read;
+                const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
 
                 return (
                   <div
@@ -311,7 +315,9 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                       onOpenNoticeDetail(notice);
                     }}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
-                      isUnread
+                      dlInfo.isExpired
+                        ? 'border-red-300 dark:border-red-800/80 bg-red-50/20 dark:bg-red-950/15 hover:border-red-400 ring-1 ring-red-400/20'
+                        : isUnread
                         ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800 shadow-sm'
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
@@ -328,9 +334,12 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                         </span>
                         <span className="text-slate-400">•</span>
                         <span className="font-mono text-slate-500">{notice.publicationNumber}</span>
-                        {notice.deadline && (
-                          <span className="text-slate-600 dark:text-slate-400 font-medium">
-                            Deadline: {notice.deadline}
+                        {dlInfo.hasDeadline && (
+                          <span className={`font-semibold flex items-center gap-1 ${
+                            dlInfo.isExpired ? 'text-red-600 dark:text-red-400 font-bold' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
+                            {dlInfo.isExpired && <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />}
+                            {dlInfo.isExpired ? `Utgången (${dlInfo.formattedDeadline})` : `Deadline: ${dlInfo.formattedDeadline}`}
                           </span>
                         )}
                       </div>

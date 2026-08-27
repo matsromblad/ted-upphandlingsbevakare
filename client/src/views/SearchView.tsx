@@ -26,6 +26,7 @@ import { Notice, NoticeFilters, FormType, DatePreset, SavedTender } from '../typ
 import { api } from '../api';
 import { CpvSelectorModal } from '../components/CpvSelectorModal';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
+import { getDeadlineInfo } from '../utils/dateUtils';
 
 interface SearchViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -474,12 +475,17 @@ export const SearchView: React.FC<SearchViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {notices.map((notice) => {
             const isSaved = isTenderSaved(notice.id);
+            const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
 
             return (
               <div
                 key={notice.id}
                 onClick={() => onOpenNoticeDetail(notice)}
-                className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 hover:border-ted-400 dark:hover:border-ted-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group space-y-4"
+                className={`bg-white dark:bg-slate-900 rounded-2xl p-5 border shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group space-y-4 ${
+                  dlInfo.isExpired
+                    ? 'border-red-300 dark:border-red-800/80 hover:border-red-500 dark:hover:border-red-500 ring-1 ring-red-400/20'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-ted-400 dark:hover:border-ted-600'
+                }`}
               >
                 <div className="space-y-2.5">
                   {/* Top metadata tags */}
@@ -494,18 +500,24 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     </div>
 
                     {/* Deadline Badge */}
-                    {notice.deadline && (
+                    {dlInfo.hasDeadline && (
                       <span
                         className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                          notice.deadlineStatus === 'EXPIRED'
-                            ? 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-400'
-                            : notice.deadlineStatus === 'EXPIRING_SOON'
+                          dlInfo.isExpired
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-300 dark:border-red-700 font-bold'
+                            : dlInfo.status === 'EXPIRING_SOON'
                             ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold border border-amber-300'
                             : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                         }`}
                       >
-                        <Clock className="w-3 h-3" />
-                        {notice.daysRemaining !== null ? `${notice.daysRemaining}d kvar` : notice.deadline}
+                        {dlInfo.isExpired ? (
+                          <AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                        ) : (
+                          <Clock className="w-3 h-3" />
+                        )}
+                        {dlInfo.isExpired
+                          ? `Utgången (${dlInfo.formattedDeadline})`
+                          : `${dlInfo.daysRemaining}d kvar`}
                       </span>
                     )}
                   </div>
@@ -605,15 +617,27 @@ export const SearchView: React.FC<SearchViewProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {notices.map((notice) => {
                   const isSaved = isTenderSaved(notice.id);
+                  const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
 
                   return (
                     <tr
                       key={notice.id}
                       onClick={() => onOpenNoticeDetail(notice)}
-                      className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors cursor-pointer"
+                      className={`transition-colors cursor-pointer ${
+                        dlInfo.isExpired
+                          ? 'bg-red-50/30 dark:bg-red-950/20 hover:bg-red-50/60 dark:hover:bg-red-950/40'
+                          : 'hover:bg-slate-50 dark:hover:bg-slate-850/60'
+                      }`}
                     >
                       <td className="p-3.5 font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {notice.publicationNumber}
+                        <div className="flex items-center gap-1.5">
+                          {dlInfo.isExpired && (
+                            <span title="Deadline har passerat">
+                              <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                            </span>
+                          )}
+                          <span>{notice.publicationNumber}</span>
+                        </div>
                       </td>
                       <td className="p-3.5 max-w-xs">
                         <p className="font-bold text-slate-900 dark:text-white line-clamp-1">{notice.title}</p>
@@ -626,17 +650,18 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         {notice.city || notice.country}
                       </td>
                       <td className="p-3.5 whitespace-nowrap">
-                        {notice.deadline ? (
+                        {dlInfo.hasDeadline ? (
                           <span
-                            className={`font-semibold ${
-                              notice.deadlineStatus === 'EXPIRING_SOON'
-                                ? 'text-amber-600 font-bold'
-                                : notice.deadlineStatus === 'EXPIRED'
-                                ? 'text-red-500'
-                                : 'text-emerald-600'
+                            className={`px-2 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                              dlInfo.isExpired
+                                ? 'bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 font-bold'
+                                : dlInfo.status === 'EXPIRING_SOON'
+                                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 font-bold'
+                                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
                             }`}
                           >
-                            {notice.deadline}
+                            {dlInfo.isExpired && <AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" />}
+                            {dlInfo.isExpired ? `Utgången (${dlInfo.formattedDeadline})` : dlInfo.formattedDeadline}
                           </span>
                         ) : (
                           <span className="text-slate-400">-</span>

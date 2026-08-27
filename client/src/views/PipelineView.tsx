@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { SavedTender, TenderStatus, Notice } from '../types';
 import { api } from '../api';
+import { getDeadlineInfo } from '../utils/dateUtils';
 
 interface PipelineViewProps {
   tenders: SavedTender[];
@@ -159,13 +160,22 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                 {/* Cards Container */}
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
                   {colTenders.map((tender) => {
-                    const notice = tender.notice || (tender as any);
+                    const notice = tender.notice;
+                    const dlInfo = getDeadlineInfo(
+                      tender.deadline,
+                      notice?.deadlineStatus,
+                      notice?.daysRemaining
+                    );
 
                     return (
                       <div
                         key={tender.id}
                         onClick={() => notice && onOpenNoticeDetail(notice)}
-                        className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-ted-400 dark:hover:border-ted-600 shadow-sm hover:shadow-md transition-all cursor-pointer space-y-2.5 group"
+                        className={`p-3.5 rounded-xl transition-all cursor-pointer space-y-2.5 group shadow-sm hover:shadow-md ${
+                          dlInfo.isExpired
+                            ? 'bg-white dark:bg-slate-900 border-2 border-red-400 dark:border-red-600 ring-1 ring-red-400/20 hover:border-red-500'
+                            : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-ted-400 dark:hover:border-ted-600'
+                        }`}
                       >
                         {/* Top tags */}
                         <div className="flex items-center justify-between gap-1">
@@ -199,11 +209,21 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                         </div>
 
                         {/* Deadline */}
-                        {tender.deadline && (
-                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 dark:border-slate-800 text-slate-500">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-slate-400" />
-                              {tender.deadline}
+                        {dlInfo.hasDeadline && (
+                          <div className={`flex items-center justify-between text-[11px] pt-1 border-t ${
+                            dlInfo.isExpired
+                              ? 'border-red-100 dark:border-red-900/40 text-red-600 dark:text-red-400'
+                              : 'border-slate-100 dark:border-slate-800 text-slate-500'
+                          }`}>
+                            <span className={`flex items-center gap-1 ${dlInfo.isExpired ? 'font-bold text-red-600 dark:text-red-400' : ''}`}>
+                              {dlInfo.isExpired ? (
+                                <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+                              ) : (
+                                <Clock className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                              )}
+                              {dlInfo.isExpired
+                                ? `Utgången (${dlInfo.formattedDeadline})`
+                                : dlInfo.formattedDeadline}
                             </span>
                             {tender.assigned_to && (
                               <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium">

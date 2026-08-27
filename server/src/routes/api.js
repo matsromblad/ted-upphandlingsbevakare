@@ -113,21 +113,32 @@ router.post('/ai/analyze', requireAuth, async (req, res) => {
   try {
     const { notice } = req.body;
     if (!notice) {
-      return res.status(400).json({ error: 'Notice-objekt krävs för analys' });
+      return res.status(400).json({ success: false, error: 'Notice-objekt krävs för analys' });
     }
-    const userId = req.user.id;
-    const companyProfile = await profileDao.get(userId);
+    const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
+    let companyProfile = null;
+    try {
+      companyProfile = await profileDao.get(userId);
+    } catch (e) {
+      console.warn('[AI Analyze] Failed to load company profile, using default:', e.message);
+    }
+
     const analysis = await analyzeTender(notice, companyProfile);
     
     // If notice is already in pipeline, save analysis
     const noticeId = notice.id || notice.publicationNumber;
     if (noticeId) {
-      await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis));
+      try {
+        await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis));
+      } catch (e) {
+        console.warn('[AI Analyze] Failed to update pipeline with analysis:', e.message);
+      }
     }
 
     res.json({ success: true, analysis });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('[AI Analyze] Error during tender analysis:', error);
+    res.status(500).json({ success: false, error: error.message || 'Analysen misslyckades' });
   }
 });
 
