@@ -172,16 +172,19 @@ function deriveWatchlistEmailFrequency(watchlist) {
 
 async function persistWatchlistMetadata(id, userId, patch) {
   if (isSupabaseConfigured) {
-    const { error } = await supabaseAdmin
-      .from('watchlists')
-      .update(patch)
-      .eq('id', id)
-      .eq('user_id', userId);
+    try {
+      const { error } = await supabaseAdmin
+        .from('watchlists')
+        .update(patch)
+        .eq('id', id)
+        .eq('user_id', userId);
 
-    if (error) {
-      throw error;
+      if (error) {
+        console.warn('[Supabase Migration Notice] Kunde inte uppdatera watchlists metadata:', error.message);
+      }
+    } catch (e) {
+      console.warn('[Supabase Migration Notice] Undantag vid uppdatering av watchlists metadata:', e.message);
     }
-
     return;
   }
 

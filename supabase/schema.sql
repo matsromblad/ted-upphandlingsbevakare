@@ -2,6 +2,12 @@
 -- TED Upphandlingsbevakare: Supabase Database Schema with Multi-User & RLS
 -- ==============================================================================
 
+-- Om du redan har skapat tabellerna tidigare, kör dessa rader för att migrera:
+ALTER TABLE IF EXISTS public.watchlists ADD COLUMN IF NOT EXISTS email_frequency TEXT NOT NULL DEFAULT 'daily' CHECK (email_frequency IN ('daily', 'weekly'));
+ALTER TABLE IF EXISTS public.watchlists ADD COLUMN IF NOT EXISTS last_email_sent_at TIMESTAMPTZ;
+ALTER TABLE IF EXISTS public.watchlists ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT UNIQUE DEFAULT gen_random_uuid()::text;
+ALTER TABLE IF EXISTS public.watchlist_hits ADD COLUMN IF NOT EXISTS emailed_at TIMESTAMPTZ;
+
 -- 1. Profiles Table (Extends Supabase auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
