@@ -19,9 +19,15 @@ import {
   HelpCircle,
   TrendingUp,
   ShieldAlert,
-  ListOrdered
+  ListOrdered,
+  Users,
+  Coins,
+  CalendarRange,
+  Scale,
+  CheckSquare,
+  FileCheck2
 } from 'lucide-react';
-import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority } from '../types';
+import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole } from '../types';
 import { api } from '../api';
 import { getDeadlineInfo, formatDeadline } from '../utils/dateUtils';
 
@@ -518,6 +524,101 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                       {aiAnalysis.summary}
                     </p>
                   </div>
+
+                  {/* 3 Key Tender Contract Metrics (Omsättning, Avtalstid, Avtalsvillkor/ABK) */}
+                  {(aiAnalysis.estimatedValueOrBudget || aiAnalysis.projectDuration || aiAnalysis.standardContractTerms) && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Förväntad omsättning */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1 shadow-sm">
+                        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          <Coins className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                          <span>Förväntad omsättning</span>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 leading-snug">
+                          {aiAnalysis.estimatedValueOrBudget || 'Framgår ej i underlaget'}
+                        </p>
+                      </div>
+
+                      {/* Arbetets början och slut */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1 shadow-sm">
+                        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          <CalendarRange className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                          <span>Arbetets början & slut</span>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 leading-snug">
+                          {aiAnalysis.projectDuration || 'Enligt förfrågningsunderlag'}
+                        </p>
+                      </div>
+
+                      {/* Standardiserade avtal t.ex. ABK */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1 shadow-sm">
+                        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                          <Scale className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                          <span>Avtalsvillkor (t.ex. ABK)</span>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 leading-snug">
+                          {aiAnalysis.standardContractTerms || 'Standardavtal / Enligt underlag'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Eftersökta roller och krav */}
+                  {aiAnalysis.requestedRoles && aiAnalysis.requestedRoles.length > 0 && (
+                    <div className="space-y-2.5">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        Eftersökta roller & Kravspecifikation
+                      </h4>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {aiAnalysis.requestedRoles.map((item, idx) => {
+                          const isObj = typeof item === 'object' && item !== null;
+                          const roleTitle = isObj ? (item as any).role : 'Roll ' + (idx + 1);
+                          const requirements = isObj ? (item as any).requirements : String(item);
+
+                          return (
+                            <div
+                              key={idx}
+                              className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1.5 shadow-sm"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-purple-600 dark:bg-purple-400 flex-shrink-0" />
+                                <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+                                  {roleTitle}
+                                </span>
+                              </div>
+                              {requirements && (
+                                <p className="text-xs text-slate-800 dark:text-slate-200 pl-4 leading-relaxed whitespace-pre-line">
+                                  {requirements}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Handlingar som ska lämnas in i anbudet */}
+                  {aiAnalysis.requiredSubmissionDocuments && aiAnalysis.requiredSubmissionDocuments.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-ted-700 dark:text-ted-300 flex items-center gap-1.5">
+                        <CheckSquare className="w-4 h-4 text-ted-600 dark:text-ted-400" />
+                        Handlingar & Bilagor som ska lämnas in i anbudet
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {aiAnalysis.requiredSubmissionDocuments.map((doc, idx) => (
+                          <div
+                            key={idx}
+                            className="text-xs p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 flex items-start gap-2.5 shadow-sm"
+                          >
+                            <FileCheck2 className="w-4 h-4 text-ted-600 dark:text-ted-400 flex-shrink-0 mt-0.5" />
+                            <span className="font-medium leading-snug">{doc}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Two Columns: Key Requirements & Opportunities */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

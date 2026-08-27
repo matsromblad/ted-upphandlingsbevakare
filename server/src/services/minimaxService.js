@@ -75,6 +75,31 @@ export async function callMiniMax(messages, systemPrompt = '', options = {}) {
   }
 }
 
+function extractJsonFromLlm(rawText) {
+  if (!rawText) return null;
+  let cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*$/gi, '').trim();
+  
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    try {
+      const repaired = cleaned
+        .replace(/,\s*}/g, '}')
+        .replace(/,\s*]/g, ']');
+      return JSON.parse(repaired);
+    } catch (e2) {
+      console.warn('[MiniMax] JSON parse error:', err.message);
+      return null;
+    }
+  }
+}
+
 /**
  * Convert user's natural language request into structured TED search filters and CPV codes
  */
@@ -104,12 +129,10 @@ Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodb
   ];
 
   try {
-    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2 });
-    
-    // Extract JSON from output
-    const jsonMatch = rawResult.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2, max_tokens: 2048 });
+    const parsed = extractJsonFromLlm(rawResult);
+    if (parsed) {
+      return parsed;
     }
     const isBim = /bim|vdc|modellering|cad|projektering|samordning/i.test(userPrompt);
     return {
@@ -167,15 +190,38 @@ Upphandlingsinformation:
 ${notice.description || 'Ingen detaljerad beskrivning tillgänglig.'}
 `;
 
-  const systemPrompt = `Du är en erfaren svensk anbudskonsult och specialist på offentlig upphandling (LOU/LUF/EU-direktiv).
+  const systemPrompt = `Du är en erfaren svensk anbudskonsult och specialist på offentlig upphandling (LOU/LUF/EU-direktiv) inom samhällsbyggnad, teknik, IT och konsulttjänster.
 Analysera upphandlingen noggrant och matcha den mot företagets profil.
 
-Returnera ENDAST ett giltigt JSON-objekt (inga backticks, endast ren JSON):
+Du MÅSTE extrahera och bedöma följande områden i detalj:
+1. Vilka roller och nyckelkompetenser som eftersöks samt vilka specifika krav/kvalifikationer som ställs på dem.
+2. Förväntad omsättning, uppskattat värde, takvolym eller budgetram.
+3. Arbetets början och slut, avtalstid och förlängningsoptioner.
+4. Vilka standardiserade avtalsvillkor som gäller (t.ex. ABK 09, AB 04, ABT 06, AMA m.fl.).
+5. Vilka handlingar och bilagor som ska lämnas in i anbudet (t.ex. CV, referensuppdrag, prisbilaga, ESPD, kvalitetsplan).
+
+Returnera ENDAST ett giltigt JSON-objekt (inga backticks, inga kodblock, endast ren JSON):
 {
   "fitScore": <nummer mellan 0 och 100 som anger hur väl upphandlingen matchar företagets profil>,
   "summary": "En koncis sammanfattning (2-3 meningar) av vad upphandlingen egentligen handlar om och vad som ska levereras.",
+  "requestedRoles": [
+    {
+      "role": "Namn på eftersökt roll (t.ex. BIM-samordnare, Uppdragsledare, CAD-projektör)",
+      "requirements": "Specifika skall-krav, erfarenhetskrav (antal år), utbildning, certifieringar eller verktygskunskap för rollen"
+    }
+  ],
+  "estimatedValueOrBudget": "Förväntad omsättning, uppskattat kontraktsvärde, takvolym eller budget (eller 'Framgår ej i sammanfattningen / Se förfrågningsunderlag')",
+  "projectDuration": "Arbetets början och slut, beräknad avtalstid och eventuella optionsår (t.ex. '2026-10-01 till 2028-09-30 med option på 1+1 år')",
+  "standardContractTerms": "Standardiserade avtal som tillämpas (t.ex. 'ABK 09 (Allmänna bestämmelser för konsultuppdrag)', 'AB 04', 'ABT 06' eller särskilda avtalsvillkor)",
+  "requiredSubmissionDocuments": [
+    "Handling 1 som ska lämnas in (t.ex. CV för namngivna nyckelpersoner)",
+    "Handling 2 (t.ex. Prisbilaga / Timpriser enligt svarsmall)",
+    "Handling 3 (t.ex. Referensuppdrag och kundintyg)",
+    "Handling 4 (t.ex. ESPD / Sanningsförsäkran)",
+    "Handling 5 (t.ex. Kvalitets- och miljöplan / Metodbeskrivning)"
+  ],
   "keyRequirements": [
-    "Viktigt krav eller skall-krav 1",
+    "Viktigt skall-krav eller obligatoriskt krav 1",
     "Viktigt krav 2",
     "Viktigt krav 3"
   ],
@@ -199,14 +245,30 @@ Returnera ENDAST ett giltigt JSON-objekt (inga backticks, endast ren JSON):
   ];
 
   try {
-    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.3 });
-    const jsonMatch = rawResult.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.3, max_tokens: 4096 });
+    const parsed = extractJsonFromLlm(rawResult);
+    if (parsed) {
+      return parsed;
     }
     return {
       fitScore: 75,
       summary: notice.description ? notice.description.slice(0, 200) + '...' : notice.title,
+      requestedRoles: [
+        {
+          role: 'Konsult / Uppdragstagare',
+          requirements: 'Erfarenhet och kompetens enligt förfrågningsunderlagets kravspecifikation.'
+        }
+      ],
+      estimatedValueOrBudget: 'Framgår i fullständigt förfrågningsunderlag.',
+      projectDuration: notice.deadline ? `Avtalsstart efter tilldelning (Sista anbudsdag: ${notice.deadline})` : 'Enligt förfrågningsunderlag.',
+      standardContractTerms: 'ABK 09 för konsultuppdrag eller enligt upphandlarens kontraktmall.',
+      requiredSubmissionDocuments: [
+        'Anbudsformulär / Svarsbilaga',
+        'CV och kompetensbeskrivning för nyckelpersoner',
+        'Prisbilaga / Timpriser',
+        'Referensuppdrag',
+        'ESPD / Sanningsförsäkran'
+      ],
       keyRequirements: ['Krav enligt förfrågningsunderlag'],
       opportunities: ['Relevant upphandling inom ert område'],
       risksAndChallenges: ['Kontrollera tidsfrister och skall-krav noggrant'],
