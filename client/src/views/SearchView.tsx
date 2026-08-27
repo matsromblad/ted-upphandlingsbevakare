@@ -22,7 +22,10 @@ import {
   Layers,
   HelpCircle,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Notice, NoticeFilters, FormType, DatePreset, SavedTender } from '../types';
 import { api } from '../api';
@@ -70,6 +73,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [generatedQuery, setGeneratedQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [error, setError] = useState<string | null>(null);
+
+  // Table Sorting state
+  const [sortField, setSortField] = useState<'id' | 'title' | 'buyer' | 'location' | 'publicationDate' | 'deadline'>('publicationDate');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Modals
   const [isCpvModalOpen, setIsCpvModalOpen] = useState(false);
@@ -197,6 +204,57 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const isTenderSaved = (noticeId: string) => {
     return savedTenders.some(t => t.notice_id === noticeId);
   };
+
+  const handleSortToggle = (field: 'id' | 'title' | 'buyer' | 'location' | 'publicationDate' | 'deadline') => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'publicationDate' || field === 'deadline' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortedNotices = React.useMemo(() => {
+    if (!notices || notices.length === 0) return [];
+    return [...notices].sort((a, b) => {
+      let valA: string | number = '';
+      let valB: string | number = '';
+
+      switch (sortField) {
+        case 'id':
+          valA = a.publicationNumber || a.id || '';
+          valB = b.publicationNumber || b.id || '';
+          break;
+        case 'title':
+          valA = (a.title || '').toLowerCase();
+          valB = (b.title || '').toLowerCase();
+          break;
+        case 'buyer':
+          valA = (a.buyer || '').toLowerCase();
+          valB = (b.buyer || '').toLowerCase();
+          break;
+        case 'location':
+          valA = `${a.city || ''} ${a.country || ''}`.trim().toLowerCase();
+          valB = `${b.city || ''} ${b.country || ''}`.trim().toLowerCase();
+          break;
+        case 'publicationDate':
+          valA = a.publicationDate || '';
+          valB = b.publicationDate || '';
+          break;
+        case 'deadline':
+          valA = a.deadline || '';
+          valB = b.deadline || '';
+          break;
+        default:
+          valA = a.publicationDate || '';
+          valB = b.publicationDate || '';
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [notices, sortField, sortDirection]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -705,18 +763,97 @@ export const SearchView: React.FC<SearchViewProps> = ({
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
+              <thead className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider select-none">
                 <tr>
-                  <th className="p-3.5">TED ID</th>
-                  <th className="p-3.5">Titel & Beskrivning</th>
-                  <th className="p-3.5">Upphandlare</th>
-                  <th className="p-3.5">Plats</th>
-                  <th className="p-3.5">Deadline</th>
-                  <th className="p-3.5 text-right">Åtgärd</th>
+                  <th
+                    onClick={() => handleSortToggle('id')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>TED ID</span>
+                      {sortField === 'id' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th
+                    onClick={() => handleSortToggle('title')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Titel & Beskrivning</span>
+                      {sortField === 'title' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th
+                    onClick={() => handleSortToggle('buyer')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Upphandlare</span>
+                      {sortField === 'buyer' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th
+                    onClick={() => handleSortToggle('location')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Plats</span>
+                      {sortField === 'location' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th
+                    onClick={() => handleSortToggle('publicationDate')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Publicerat</span>
+                      {sortField === 'publicationDate' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th
+                    onClick={() => handleSortToggle('deadline')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Deadline</span>
+                      {sortField === 'deadline' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th className="p-3.5 text-right whitespace-nowrap">Åtgärd</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {notices.map((notice) => {
+                {sortedNotices.map((notice) => {
                   const isSaved = isTenderSaved(notice.id);
                   const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
 
@@ -749,6 +886,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       </td>
                       <td className="p-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">
                         {notice.city || notice.country}
+                      </td>
+                      <td className="p-3.5 text-slate-700 dark:text-slate-300 whitespace-nowrap font-medium">
+                        {notice.publicationDate || '-'}
                       </td>
                       <td className="p-3.5 whitespace-nowrap">
                         {dlInfo.hasDeadline ? (
