@@ -55,30 +55,37 @@ export const Navbar: React.FC<NavbarProps> = ({
   const avatarUrl = currentUser?.user_metadata?.avatar_url;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+    <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md transition-colors">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between min-h-[4rem] h-16 sm:h-18 gap-2 sm:gap-4">
           {/* Logo & Brand */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => onSelectView('search')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white shadow-md shadow-ted-500/20">
-              <Building2 className="w-6 h-6" />
+          <div
+            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer flex-shrink-0 select-none py-1"
+            onClick={() => onSelectView('search')}
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white shadow-md shadow-ted-500/20 flex-shrink-0">
+              <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-lg text-slate-900 dark:text-white tracking-tight">TED Bevakare</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-ted-100 text-ted-800 dark:bg-ted-950 dark:text-ted-300 border border-ted-200 dark:border-ted-800">
+            <div className="flex flex-col justify-center min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
+                <span className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight leading-tight">
+                  TED Bevakare
+                </span>
+                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-ted-100 text-ted-800 dark:bg-ted-950 dark:text-ted-300 border border-ted-200 dark:border-ted-800 leading-none flex-shrink-0">
                   EU & Sverige
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Tenders Electronic Daily Monitor</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap leading-tight mt-0.5 hidden sm:block">
+                Tenders Electronic Daily Monitor
+              </p>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
             <button
               onClick={() => onSelectView('search')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-1.5 rounded-lg text-xs xl:text-sm font-medium transition-all ${
                 currentView === 'search'
                   ? 'bg-white dark:bg-slate-900 text-ted-700 dark:text-ted-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -90,7 +97,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectView('watchlists')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all relative ${
+              className={`flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-1.5 rounded-lg text-xs xl:text-sm font-medium transition-all relative ${
                 currentView === 'watchlists'
                   ? 'bg-white dark:bg-slate-900 text-ted-700 dark:text-ted-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -107,7 +114,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectView('pipeline')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all relative ${
+              className={`flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-1.5 rounded-lg text-xs xl:text-sm font-medium transition-all relative ${
                 currentView === 'pipeline'
                   ? 'bg-white dark:bg-slate-900 text-ted-700 dark:text-ted-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -124,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectView('cpv-profile')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-1.5 rounded-lg text-xs xl:text-sm font-medium transition-all ${
                 currentView === 'cpv-profile'
                   ? 'bg-white dark:bg-slate-900 text-ted-700 dark:text-ted-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -136,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectView('about')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-1.5 rounded-lg text-xs xl:text-sm font-medium transition-all ${
                 currentView === 'about'
                   ? 'bg-white dark:bg-slate-900 text-ted-700 dark:text-ted-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -148,13 +155,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Action buttons: AI Chat, Auth & Theme Toggle */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
             <button
               onClick={onOpenChat}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-md shadow-purple-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-md shadow-purple-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap flex-shrink-0"
             >
-              <Sparkles className="w-4 h-4 text-purple-200" />
+              <Sparkles className="w-4 h-4 text-purple-200 flex-shrink-0" />
               <span className="hidden sm:inline">MiniMax AI Copilot</span>
+              <span className="inline sm:hidden">AI Copilot</span>
             </button>
 
             {/* User Auth Dropdown / Login button */}
@@ -162,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="flex items-center gap-2 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex-shrink-0"
                 >
                   {avatarUrl ? (
                     <img src={avatarUrl} alt={displayName} className="w-7 h-7 rounded-lg object-cover" />
@@ -237,7 +245,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Mobile Navigation bar */}
-        <div className="flex md:hidden items-center justify-around py-2 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex lg:hidden items-center justify-around py-2 border-t border-slate-100 dark:border-slate-800">
           <button
             onClick={() => onSelectView('search')}
             className={`flex flex-col items-center gap-1 text-xs ${currentView === 'search' ? 'text-ted-600 font-bold' : 'text-slate-500'}`}
