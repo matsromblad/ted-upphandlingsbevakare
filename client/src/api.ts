@@ -8,6 +8,7 @@ import {
   CompanyProfile,
   ChatMessage,
   AIAnalysis,
+  ParsedDocument,
   CpvCategory,
   TeamMember
 } from './types';
@@ -79,6 +80,37 @@ export const api = {
       method: 'POST',
       headers,
       body: JSON.stringify({ notice })
+    });
+    return res.json();
+  },
+
+  // AI Analyze Notice with Uploaded Documents (ZIP, PDF, DOCX, XLSX)
+  analyzeNoticeWithDocuments: async (
+    notice: Notice,
+    files: File[]
+  ): Promise<{
+    success: boolean;
+    analysis?: AIAnalysis;
+    parsedDocuments?: ParsedDocument[];
+    documentCount?: number;
+    error?: string;
+  }> => {
+    const authHeaders = await getHeaders();
+    const headers: Record<string, string> = {};
+    if (authHeaders['Authorization']) {
+      headers['Authorization'] = authHeaders['Authorization'];
+    }
+
+    const formData = new FormData();
+    formData.append('notice', JSON.stringify(notice));
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    const res = await fetch(`${API_BASE}/ai/analyze-documents`, {
+      method: 'POST',
+      headers,
+      body: formData
     });
     return res.json();
   },

@@ -1,13 +1,20 @@
 import express from 'express';
+import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
-import { naturalLanguageToFilters, analyzeTender, chatWithAssistant } from '../services/minimaxService.js';
+import { naturalLanguageToFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant } from '../services/minimaxService.js';
+import { parseUploadedProcurementFiles } from '../services/documentParserService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
 import { buildWatchlistManageUrl } from '../services/emailService.js';
 import { CPV_CATEGORIES, searchCpv } from '../services/cpvData.js';
 import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao } from '../db.js';
 import { requireAuth, isSupabaseConfigured, isPlaceholder } from '../supabase.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 } // 60MB max file size
+});
 
 const router = express.Router();
 const VALID_EMAIL_FREQUENCIES = new Set(['daily', 'weekly']);
@@ -191,6 +198,57 @@ router.post('/ai/analyze', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[AI Analyze] Error during tender analysis:', error);
     res.status(500).json({ success: false, error: error.message || 'Analysen misslyckades' });
+  }
+});
+
+router.post('/ai/analyze-documents', requireAuth, upload.array('files', 30), async (req, res) => {
+  try {
+    const rawNotice = req.body.notice;
+    if (!rawNotice) {
+      return res.status(400).json({ success: false, error: 'Notice-data krävs' });
+    }
+    const notice = typeof rawNotice === 'string' ? JSON.parse(rawNotice) : rawNotice;
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, error: 'Minst en fil (ZIP, PDF, DOCX, XLSX) krävs för dokumentanalys' });
+    }
+
+    const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
+    let companyProfile = null;
+    try {
+      companyProfile = await profileDao.get(userId);
+    } catch (e) {
+      console.warn('[AI Analyze Documents] Failed to load company profile:', e.message);
+    }
+
+    // Parse uploaded files or ZIP archive
+    const { documents, documentCount, combinedCorpus } = await parseUploadedProcurementFiles(files);
+    if (documentCount === 0 || !combinedCorpus) {
+      return res.status(400).json({ success: false, error: 'Kunde inte extrahera läsbar text från de uppladdade filerna' });
+    }
+
+    // Run deep analysis grounded in actual tender documents
+    const analysis = await analyzeTenderWithDocuments(notice, combinedCorpus, companyProfile, documents);
+
+    // Save to pipeline if notice is in pipeline
+    const noticeId = notice.id || notice.publicationNumber;
+    if (noticeId) {
+      try {
+        await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis));
+      } catch (e) {
+        console.warn('[AI Analyze Documents] Failed to update pipeline with analysis:', e.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      analysis,
+      parsedDocuments: documents,
+      documentCount
+    });
+  } catch (error) {
+    console.error('[AI Analyze Documents] Error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Dokumentanalysen misslyckades' });
   }
 });
 

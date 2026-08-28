@@ -195,7 +195,7 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
               <div className="max-w-sm space-y-1">
                 <h4 className="font-bold text-slate-900 dark:text-white">Hur kan jag hjälpa dig idag?</h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Jag är kopplad till MiniMax-M3 och är expert på TED-upphandlingar, LOU, kravtolkning och anbudsstrategier.
+                  Jag är kopplad till MiniMax-M3 och är expert på TED-upphandlingar, LOU och anbudsstrategier. Jag gissar aldrig – om uppgifter saknas i kungörelsen hänvisar jag till förfrågningsunderlaget i upphandlingsportalen.
                 </p>
               </div>
 

@@ -84,6 +84,14 @@ export interface WatchlistHit {
   discovered_at: string;
 }
 
+export interface ParsedDocument {
+  name: string;
+  category: string;
+  size: number;
+  charCount?: number;
+  preview?: string;
+}
+
 export interface RequestedRole {
   role: string;
   requirements: string;
@@ -103,6 +111,10 @@ export interface AIAnalysis {
   projectDuration?: string;
   standardContractTerms?: string;
   requiredSubmissionDocuments?: string[];
+  // Dokumentförankrad analys
+  isDocumentGrounded?: boolean;
+  documentSources?: string[];
+  evaluationModel?: string;
 }
 
 export interface SavedTender {

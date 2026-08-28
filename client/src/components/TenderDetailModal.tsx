@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Building,
@@ -29,9 +29,16 @@ import {
   Copy,
   Check,
   Globe2,
-  FolderOpen
+  FolderOpen,
+  UploadCloud,
+  FileArchive,
+  FileSpreadsheet,
+  FileCode,
+  Trash2,
+  Paperclip,
+  Layers
 } from 'lucide-react';
-import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole } from '../types';
+import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole, ParsedDocument } from '../types';
 import { api } from '../api';
 import { getDeadlineInfo, formatDeadline } from '../utils/dateUtils';
 import { UserSelectDropdown } from './UserSelectDropdown';
@@ -56,9 +63,16 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'ai-analysis' | 'internal'>('overview');
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingDocuments, setAnalyzingDocuments] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  // Document upload state (Solution A)
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [parsedDocsList, setParsedDocsList] = useState<ParsedDocument[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Internal state
   const [notes, setNotes] = useState('');
@@ -128,6 +142,21 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
     }
   };
 
+  const handleFileSelect = (newFiles: FileList | null) => {
+    if (!newFiles || newFiles.length === 0) return;
+    const fileArray = Array.from(newFiles);
+    setUploadedFiles(prev => [...prev, ...fileArray]);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleClearFiles = () => {
+    setUploadedFiles([]);
+    setParsedDocsList([]);
+  };
+
   const handleRunAiAnalysis = async () => {
     setAnalyzing(true);
     setAnalysisError(null);
@@ -144,6 +173,29 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
       setAnalysisError(e?.message || 'Ett oväntat fel inträffade vid analysen.');
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleRunDocumentAnalysis = async () => {
+    if (uploadedFiles.length === 0) return;
+    setAnalyzingDocuments(true);
+    setAnalysisError(null);
+    try {
+      const res = await api.analyzeNoticeWithDocuments(notice, uploadedFiles);
+      if (res.success && res.analysis) {
+        setAiAnalysis(res.analysis);
+        if (res.parsedDocuments) {
+          setParsedDocsList(res.parsedDocuments);
+        }
+        onTenderUpdated();
+      } else {
+        setAnalysisError(res.error || 'Kunde inte genomföra dokumentanalys.');
+      }
+    } catch (e: any) {
+      console.error('Failed to run document analysis:', e);
+      setAnalysisError(e?.message || 'Ett fel uppstod vid analys av handlingarna.');
+    } finally {
+      setAnalyzingDocuments(false);
     }
   };
 
@@ -785,17 +837,169 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
           {/* TAB 2: MINIMAX AI ANALYSIS */}
           {activeTab === 'ai-analysis' && (
             <div className="space-y-6">
-              {!aiAnalysis ? (
-                <div className="text-center py-10 space-y-4">
-                  <div className="w-16 h-16 rounded-2xl bg-purple-100 dark:bg-purple-950/80 border border-purple-200 dark:border-purple-800 flex items-center justify-center text-purple-600 dark:text-purple-400 mx-auto shadow-sm">
-                    <Sparkles className="w-8 h-8" />
+              {/* Document Dropzone / Ingestion Section */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/40 dark:from-slate-850 dark:to-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-950/80 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                      <FolderOpen className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Ladda upp förfrågningsunderlag (ZIP, PDF, Word, Excel)
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {portalName ? `Har du hämtat underlaget från ${portalName}?` : 'Har du hämtat underlaget från upphandlingsportalen?'} Släpp filerna här för en 100% faktaverifierad analys.
+                      </p>
+                    </div>
                   </div>
-                  <div className="max-w-md mx-auto space-y-1.5">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Djupgående anbudsanalys med MiniMax-M3
+
+                  {tenderPortalUrl && (
+                    <a
+                      href={tenderPortalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 flex items-center gap-1.5 self-start sm:self-auto transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Öppna {portalName || 'portalen'} & ladda ner ZIP
+                    </a>
+                  )}
+                </div>
+
+                {/* Dropzone Area */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    handleFileSelect(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`p-6 border-2 border-dashed rounded-xl cursor-pointer text-center transition-all flex flex-col items-center justify-center gap-2 ${
+                    isDragging
+                      ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/40 ring-4 ring-purple-500/10'
+                      : 'border-slate-300 dark:border-slate-700 hover:border-purple-400 dark:hover:border-purple-600 bg-white/70 dark:bg-slate-900/60'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".zip,.pdf,.docx,.doc,.xlsx,.xls,.csv,.txt"
+                    className="hidden"
+                    onChange={(e) => handleFileSelect(e.target.files)}
+                  />
+
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/80 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-sm">
+                    <UploadCloud className="w-5 h-5" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Dra & släpp din ZIP-fil eller upphandlingsdokument här
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Stöder <strong>ZIP-arkiv</strong>, PDF, Word (.docx), Excel (.xlsx, .csv) & textfiler
+                    </p>
+                  </div>
+                </div>
+
+                {/* Selected Files List */}
+                {uploadedFiles.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <span>Valda filer ({uploadedFiles.length} st):</span>
+                      <button
+                        type="button"
+                        onClick={handleClearFiles}
+                        className="text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 text-[11px]"
+                      >
+                        <Trash2 className="w-3 h-3" /> Rensa alla
+                      </button>
+                    </div>
+
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                      {uploadedFiles.map((file, idx) => {
+                        const isZip = file.name.endsWith('.zip');
+                        return (
+                          <div
+                            key={idx}
+                            className="p-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-750 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              {isZip ? (
+                                <FileArchive className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                              ) : file.name.endsWith('.pdf') ? (
+                                <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
+                              ) : file.name.endsWith('.xlsx') || file.name.endsWith('.csv') ? (
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                              ) : (
+                                <FileCode className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                              )}
+                              <span className="font-medium text-slate-900 dark:text-white truncate">
+                                {file.name}
+                              </span>
+                              <span className="text-[10px] text-slate-400 flex-shrink-0">
+                                ({(file.size / 1024).toFixed(1)} KB)
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveFile(idx);
+                              }}
+                              className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 p-1"
+                              title="Ta bort fil"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Action Button for Document Analysis */}
+                    <div className="pt-2">
+                      <button
+                        onClick={handleRunDocumentAnalysis}
+                        disabled={analyzingDocuments}
+                        className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md shadow-purple-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-75"
+                      >
+                        {analyzingDocuments ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Packar upp och analyserar {uploadedFiles.length} handlingar...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Kör djupanalys med uppladdade handlingar ({uploadedFiles.length} st)
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!aiAnalysis ? (
+                <div className="text-center py-6 space-y-3">
+                  <div className="max-w-md mx-auto space-y-1">
+                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                      Eller kör snabbanalys från TED-kungörelsen
                     </h3>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                      MiniMax analyserar upphandlingen mot ert företags profil, beräknar matchningspoäng (0-100%), extraherar skall-krav och genererar konkreta anbudsstrategier.
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Om du inte har laddat ner förfrågningsunderlaget än kan du köra en preliminär analys baserad på TED-sammandraget.
                     </p>
                   </div>
 
@@ -808,18 +1012,18 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
                   <button
                     onClick={handleRunAiAnalysis}
-                    disabled={analyzing}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold text-sm shadow-lg shadow-purple-500/25 inline-flex items-center gap-2 transition-all disabled:opacity-75"
+                    disabled={analyzing || analyzingDocuments}
+                    className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-semibold text-xs border border-slate-300 dark:border-slate-700 inline-flex items-center gap-2 transition-all disabled:opacity-75"
                   >
                     {analyzing ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        MiniMax analyserar upphandlingen...
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Analyserar TED-kungörelsen...
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-4 h-4" />
-                        Kör MiniMax AI-Analys nu
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        Kör snabbanalys av TED-kungörelsen
                       </>
                     )}
                   </button>
@@ -834,22 +1038,65 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                         <span className="text-[9px] uppercase font-bold tracking-wider opacity-90">Matchning</span>
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-900 dark:text-white">MiniMax Relevansbedömning</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-slate-900 dark:text-white">MiniMax Relevansbedömning</h4>
+                          {aiAnalysis.isDocumentGrounded && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Verifierad med handlingar
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-600 dark:text-slate-300">
-                          Baserat på era registrerade kompetensnyckelord och upphandlingens kravprofil.
+                          {aiAnalysis.isDocumentGrounded
+                            ? `Baserat på granskning av ${aiAnalysis.documentSources?.length || parsedDocsList.length || 'flera'} upphandlingshandlingar och era kompetensprofiler.`
+                            : 'Baserat på era registrerade kompetensnyckelord och upphandlingens kravprofil.'}
                         </p>
                       </div>
                     </div>
 
                     <button
                       onClick={handleRunAiAnalysis}
-                      disabled={analyzing}
+                      disabled={analyzing || analyzingDocuments}
                       className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-700 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm flex-shrink-0"
                     >
                       {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      Kör om analys
+                      Kör om snabbanalys
                     </button>
                   </div>
+
+                  {/* Document Sources List if Document Grounded */}
+                  {aiAnalysis.documentSources && aiAnalysis.documentSources.length > 0 && (
+                    <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        <Layers className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Granskade förfrågningshandlingar ({aiAnalysis.documentSources.length} st):</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {aiAnalysis.documentSources.map((docName, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800/80 text-[11px] font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5 shadow-sm"
+                          >
+                            <FileText className="w-3 h-3 text-emerald-600" />
+                            {docName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Factual Grounding Notice Banner if NOT Document Grounded */}
+                  {!aiAnalysis.isDocumentGrounded && (
+                    <div className="p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 flex items-start gap-2.5 text-xs text-blue-900 dark:text-blue-200">
+                      <HelpCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold">Strikt faktaförankrad analys: </span>
+                        <span>
+                          Denna analys baseras på TED-sammandraget. Ladda upp ZIP-arkivet eller handlingarna ovan för att extrahera samtliga skall-krav och bilagor från <strong>{portalName || 'upphandlingsportalen'}</strong>.
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {analysisError && (
                     <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">

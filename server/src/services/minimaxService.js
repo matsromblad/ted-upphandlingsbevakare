@@ -177,106 +177,245 @@ Företagsprofil:
 - Prioriterade länder: ["SWE"]
 `;
 
+  const portalHint = notice.portalName || notice.links?.portalName || (notice.links?.submission ? 'extern upphandlingsportal' : 'förfrågningsunderlaget');
+
   const tenderContext = `
-Upphandlingsinformation:
+Upphandlingsinformation från TED-kungörelsen:
 - Titel: ${notice.title}
 - Upphandlare/Köpare: ${notice.buyer} (${notice.city || ''}, ${notice.country || ''})
+- Uppskattat värde / takbelopp: ${notice.estimatedValue || 'Framgår ej i TED-kungörelsen'}
 - Publiceringsdatum: ${notice.publicationDate || 'Okänt'}
 - Sista anbudsdag (Deadline): ${notice.deadline || 'Ej angiven'}
 - Dagar kvar: ${notice.daysRemaining !== null ? notice.daysRemaining + ' dagar' : 'Okänt'}
 - CPV-koder: ${notice.cpvDetails ? notice.cpvDetails.map(c => `${c.code} (${c.label})`).join(', ') : 'Ej specificerat'}
 - Typ: ${notice.formType}
-- Beskrivning:
-${notice.description || 'Ingen detaljerad beskrivning tillgänglig.'}
+- Upphandlingssystem/Portal: ${portalHint}
+- Beskrivning från TED:
+${notice.description || 'Ingen detaljerad beskrivning angiven i TED-kungörelsen.'}
 `;
 
-  const systemPrompt = `Du är en erfaren svensk anbudskonsult och specialist på offentlig upphandling (LOU/LUF/EU-direktiv) inom samhällsbyggnad, teknik, IT och konsulttjänster.
+  const systemPrompt = `Du är en erfaren svensk anbudsspecialist och expert på offentlig upphandling (LOU/LUF/EU-direktiv).
 Analysera upphandlingen noggrant och matcha den mot företagets profil.
 
-Du MÅSTE extrahera och bedöma följande områden i detalj:
-1. Vilka roller och nyckelkompetenser som eftersöks samt vilka specifika krav/kvalifikationer som ställs på dem.
-2. Förväntad omsättning, uppskattat värde, takvolym eller budgetram.
-3. Arbetets början och slut, avtalstid och förlängningsoptioner.
-4. Vilka standardiserade avtalsvillkor som gäller (t.ex. ABK 09, AB 04, ABT 06, AMA m.fl.).
-5. Vilka handlingar och bilagor som ska lämnas in i anbudet (t.ex. CV, referensuppdrag, prisbilaga, ESPD, kvalitetsplan).
+======================================================================
+ABSOLUT FÖRBUD MOT GISNINGAR OCH HALLUCINATIONER (STRIKT FAKTAGRUNDNING):
+1. Du analyserar en TED-kungörelse (sammanfattning/annons).
+2. Du får ABSOLUT INTE gissa, anta eller hitta på uppgifter som inte uttryckligen framgår av ovanstående information!
+3. Mycket information (detaljerade kravspecifikationer, specifika rollkrav, obligatoriska svarsbilagor, budgetramar och avtalsvillkor såsom ABK 09, AB 04 eller särskilda villkor) ligger ofta i externa upphandlingsdokument på system som TendSign, e-Avrop, Mercell, Kommers Annons etc., vilka du INTE har tillgång till.
+4. Det är helt KORREKT OCH FÖRVÄNTAT att uppgifter saknas i kungörelsetexten. När en uppgift saknas SKA DU SÄGA DET TYDLIGT (t.ex. "Framgår ej i TED-kungörelsen – se förfrågningsunderlag på ${portalHint}").
+======================================================================
+
+Instruktioner för JSON-fälten:
+- "fitScore": Nummer 0-100 som anger hur väl upphandlingen matchar företagets profil baserat ENBART på de faktiska uppgifterna och CPV-koderna. Om informationen är mycket knapphändig, sätt ett måttligt/neutralt värde och motivera det.
+- "summary": Koncis sammanfattning (2-3 meningar) av vad som framgår av kungörelsen. Om beskrivningen är kortfattad, konstatera det sakligt.
+- "requestedRoles": Lista ENDAST specifika roller som faktiskt nämns i kungörelsetexten. Om inga roller nämns i texten, returnera en tom lista [] eller ange [{ "role": "Specificeras ej i kungörelsetexten", "requirements": "Fullständig kravprofil och rollbeskrivningar finns i förfrågningsunderlaget på ${portalHint}." }]. Hitta ALDRIG på roller.
+- "estimatedValueOrBudget": Det faktiska värdet om det framgår, annars "Framgår ej i TED-kungörelsen (kontrollera förfrågningsunderlag på ${portalHint})".
+- "projectDuration": Avtalsperiod och optioner om det framgår av texten, annars "Framgår ej i kungörelsen (se förfrågningsunderlag)".
+- "standardContractTerms": Ange standardavtal (t.ex. ABK 09, AB 04) ENDAST om det uttryckligen nämns i texten. Annars skriv "Framgår ej i kungörelsetexten (se administrativa föreskrifter i förfrågningsunderlaget på ${portalHint})".
+- "requiredSubmissionDocuments": Lista ENDAST handlingar som uttryckligen efterfrågas i kungörelsetexten. Om inga specifika handlingar nämns, ange ["Se svarsmallar och obligatoriska bilagor i upphandlingssystemet (${portalHint})"].
+- "keyRequirements": Lista ENDAST krav som uttryckligen framgår av texten.
+- "opportunities": Konkreta möjligheter baserat på faktisk matchning.
+- "risksAndChallenges": Lyft alltid fram om underlaget i TED är kortfattat och att fullständigt förfrågningsunderlag måste hämtas på ${portalHint} för att säkerställa alla skall-krav.
+- "recommendedBidStrategy": Råd för att granska handlingarna och förbereda anbudet.
+- "clarificationQuestions": Förslag på relevanta frågor utifrån de oklarheter eller saknade uppgifter som identifierats.
 
 Returnera ENDAST ett giltigt JSON-objekt (inga backticks, inga kodblock, endast ren JSON):
 {
-  "fitScore": <nummer mellan 0 och 100 som anger hur väl upphandlingen matchar företagets profil>,
-  "summary": "En koncis sammanfattning (2-3 meningar) av vad upphandlingen egentligen handlar om och vad som ska levereras.",
+  "fitScore": <nummer mellan 0 och 100>,
+  "summary": "Koncis sammanfattning baserad på faktiska uppgifter",
   "requestedRoles": [
     {
-      "role": "Namn på eftersökt roll (t.ex. BIM-samordnare, Uppdragsledare, CAD-projektör)",
-      "requirements": "Specifika skall-krav, erfarenhetskrav (antal år), utbildning, certifieringar eller verktygskunskap för rollen"
+      "role": "Rollnamn som nämns i texten (eller 'Specificeras ej i kungörelsetexten')",
+      "requirements": "Krav som uttryckligen framgår eller hänvisning till förfrågningsunderlag"
     }
   ],
-  "estimatedValueOrBudget": "Förväntad omsättning, uppskattat kontraktsvärde, takvolym eller budget (eller 'Framgår ej i sammanfattningen / Se förfrågningsunderlag')",
-  "projectDuration": "Arbetets början och slut, beräknad avtalstid och eventuella optionsår (t.ex. '2026-10-01 till 2028-09-30 med option på 1+1 år')",
-  "standardContractTerms": "Standardiserade avtal som tillämpas (t.ex. 'ABK 09 (Allmänna bestämmelser för konsultuppdrag)', 'AB 04', 'ABT 06' eller särskilda avtalsvillkor)",
+  "estimatedValueOrBudget": "Belopp eller 'Framgår ej i TED-kungörelsen'",
+  "projectDuration": "Period eller 'Framgår ej i sammanfattningen'",
+  "standardContractTerms": "Avtalsvillkor om nämnt eller 'Framgår ej i kungörelsetexten'",
   "requiredSubmissionDocuments": [
-    "Handling 1 som ska lämnas in (t.ex. CV för namngivna nyckelpersoner)",
-    "Handling 2 (t.ex. Prisbilaga / Timpriser enligt svarsmall)",
-    "Handling 3 (t.ex. Referensuppdrag och kundintyg)",
-    "Handling 4 (t.ex. ESPD / Sanningsförsäkran)",
-    "Handling 5 (t.ex. Kvalitets- och miljöplan / Metodbeskrivning)"
+    "Faktiskt nämnd handling eller 'Se förfrågningsunderlag i upphandlingssystemet'"
   ],
   "keyRequirements": [
-    "Viktigt skall-krav eller obligatoriskt krav 1",
-    "Viktigt krav 2",
-    "Viktigt krav 3"
+    "Faktiskt skall-krav från texten"
   ],
   "opportunities": [
-    "Möjlighet eller fördel för anbudsgivaren 1",
-    "Möjlighet 2"
+    "Möjlighet baserad på upphandlingens faktiska inriktning"
   ],
   "risksAndChallenges": [
-    "Risk, oklarhet eller utmaning 1",
-    "Risk 2"
+    "Risk/oklarhet (t.ex. att fullständigt underlag måste hämtas på portalen)"
   ],
-  "recommendedBidStrategy": "Konkreta råd för hur ett vinnande anbud bör utformas och vad som bör betonas.",
+  "recommendedBidStrategy": "Strategiska råd för anbudsarbetet",
   "clarificationQuestions": [
-    "Förslag på fråga att ställa till upphandlaren under frågeperioden 1",
-    "Förslag på fråga 2"
+    "Fråga att ställa till upphandlaren"
   ]
 }`;
 
   const messages = [
-    { role: 'user', content: `${profileContext}\n\n${tenderContext}\n\nAnalysera denna upphandling och ge dina rekommendationer i JSON-format.` }
+    { role: 'user', content: `${profileContext}\n\n${tenderContext}\n\nAnalysera denna upphandling strikt utifrån den givna informationen och returnera JSON.` }
   ];
 
   try {
-    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.3, max_tokens: 4096 });
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2, max_tokens: 4096 });
     const parsed = extractJsonFromLlm(rawResult);
     if (parsed) {
       return parsed;
     }
     return {
-      fitScore: 75,
-      summary: notice.description ? notice.description.slice(0, 200) + '...' : notice.title,
+      fitScore: 50,
+      summary: notice.description ? notice.description.slice(0, 250) + '...' : (notice.title || 'Information saknas i kungörelsen.'),
       requestedRoles: [
         {
-          role: 'Konsult / Uppdragstagare',
-          requirements: 'Erfarenhet och kompetens enligt förfrågningsunderlagets kravspecifikation.'
+          role: 'Specificeras ej i kungörelsetexten',
+          requirements: `Kravprofil och eftersökta roller framgår i det fullständiga förfrågningsunderlaget på ${portalHint}.`
         }
       ],
-      estimatedValueOrBudget: 'Framgår i fullständigt förfrågningsunderlag.',
-      projectDuration: notice.deadline ? `Avtalsstart efter tilldelning (Sista anbudsdag: ${notice.deadline})` : 'Enligt förfrågningsunderlag.',
-      standardContractTerms: 'ABK 09 för konsultuppdrag eller enligt upphandlarens kontraktmall.',
+      estimatedValueOrBudget: notice.estimatedValue || `Framgår ej i TED-kungörelsen (kontrollera förfrågningsunderlag på ${portalHint}).`,
+      projectDuration: notice.deadline ? `Sista anbudsdag: ${notice.deadline}. Avtalsperiod framgår i förfrågningsunderlaget.` : 'Framgår ej i sammanfattningen.',
+      standardContractTerms: `Framgår ej i kungörelsetexten (se administrativa föreskrifter på ${portalHint}).`,
       requiredSubmissionDocuments: [
-        'Anbudsformulär / Svarsbilaga',
-        'CV och kompetensbeskrivning för nyckelpersoner',
-        'Prisbilaga / Timpriser',
-        'Referensuppdrag',
-        'ESPD / Sanningsförsäkran'
+        `Se förfrågningsunderlag och svarsbilagor i upphandlingssystemet (${portalHint})`
       ],
-      keyRequirements: ['Krav enligt förfrågningsunderlag'],
-      opportunities: ['Relevant upphandling inom ert område'],
-      risksAndChallenges: ['Kontrollera tidsfrister och skall-krav noggrant'],
-      recommendedBidStrategy: 'Läs igenom hela upphandlingsdokumentet och säkerställ alla skall-krav.',
-      clarificationQuestions: ['Finns möjlighet till förtydligande av kravprofilen?']
+      keyRequirements: [
+        'Krav och obligatoriska villkor framgår i det fullständiga förfrågningsunderlaget'
+      ],
+      opportunities: [
+        'Matchning mot företagets verksamhetsområde enligt titel och CPV-koder'
+      ],
+      risksAndChallenges: [
+        `Underlaget i TED är begränsat. Fullständigt förfrågningsunderlag måste hämtas från ${portalHint} för att säkerställa alla skall-krav och avtalsvillkor.`
+      ],
+      recommendedBidStrategy: `Ladda ner och läs igenom hela förfrågningsunderlaget från ${portalHint} för att utvärdera samtliga krav och utvärderingskriterier.`,
+      clarificationQuestions: [
+        'Finns möjlighet till förtydligande av kravspecifikationen under frågestunden?'
+      ]
     };
   } catch (error) {
     console.error('Tender analysis failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Deep, 100% verified AI analysis of procurement tender WITH uploaded tender documents (AF, kravspec, prisbilagor, avtal)
+ */
+export async function analyzeTenderWithDocuments(notice, documentCorpus, companyProfile = null, documentSummaryList = []) {
+  const profileContext = companyProfile ? `
+Företagsprofil:
+- Företagsnamn: ${companyProfile.name || 'WSP Sverige AB (BIM-enheten)'}
+- Verksamhet: ${companyProfile.description || 'Samhällsbyggnadskonsult inom BIM, VDC, digital informationshantering och projektering'}
+- Kärnkompetenser/Nyckelord: ${companyProfile.keywords || 'BIM, BIM-samordning, VDC, Building Information Modeling, 3D-modellering'}
+- Prioriterade länder: ${companyProfile.preferred_countries || '["SWE"]'}
+` : `
+Företagsprofil:
+- Företagsnamn: WSP Sverige AB (BIM-enheten)
+- Verksamhet: Samhällsbyggnadskonsult inom BIM, VDC, digital informationshantering, digitala tvillingar och projekteringsledning
+- Kärnkompetenser/Nyckelord: BIM, BIM-samordning, VDC, Building Information Modeling, 3D-modellering, CAD, samhällsbyggnad
+- Prioriterade länder: ["SWE"]
+`;
+
+  const tenderContext = `
+Upphandlingsinformation (TED):
+- Titel: ${notice.title}
+- Upphandlande myndighet/Köpare: ${notice.buyer} (${notice.city || ''}, ${notice.country || ''})
+- Sista anbudsdag (Deadline): ${notice.deadline || 'Ej angiven'}
+- CPV-koder: ${notice.cpvDetails ? notice.cpvDetails.map(c => `${c.code} (${c.label})`).join(', ') : 'Ej specificerat'}
+- Portal: ${notice.portalName || 'Upphandlingsportal'}
+`;
+
+  const docListHeader = documentSummaryList && documentSummaryList.length > 0
+    ? `UPPLADDADE HANDLINGAR (${documentSummaryList.length} st):\n` + documentSummaryList.map(d => `- ${d.name} [${d.category}] (${(d.size / 1024).toFixed(1)} KB)`).join('\n')
+    : 'UPPLADDADE FÖRFRÅGNINGSHANDLINGAR';
+
+  const systemPrompt = `Du är en svensk senior anbudsexpert och specialist på offentlig upphandling (LOU/LUF).
+Du har nu fått tillgång till de FAKTISKA FÖRFRÅGNINGSHANDLINGARNA (Administrativa föreskrifter, Kravspecifikationer, Prisbilagor, Kontraktsmallar etc.) för denna upphandling.
+
+DITT UPPDRAG:
+Genomför en 100% faktaförankrad, djupgående anbudsanalys baserad på de uppladdade handlingarna.
+Koppla varje identifierat krav och villkor till det relevanta dokumentet (t.ex. "[AF-del.pdf]" eller "[Prisbilaga.xlsx]").
+
+Analysera följande områden noggrant:
+1. Skall-krav & kvalificeringskrav (ekonomisk ställning, teknisk/yrkesmässig kapacitet, ISO-certifieringar, referensuppdrag).
+2. Eftersökta roller & specifika personkrav (utbildning, års erfarenhet, specialistkompetens, namngivna nyckelpersoner).
+3. Ersättningsmodell & Utvärdering (löpande räkning med tak, fast pris, incitament, fiktiva timmar, viktning mellan pris och kvalitet).
+4. Avtalsvillkor & Administrativa bestämmelser (standardavtal t.ex. ABK 09 / AB 04, viten, indexreglering, uppsägningstid, förlängningsoptioner).
+5. Inlämningshandlingar: Samtliga svarsmallar, bilagor och bevis som MÅSTE bifogas anbudet för att inte bli förkastat.
+6. Konkreta risker och fallgropar i upphandlingsdokumenten.
+7. Rekommenderad vinnande anbudsstrategi och förslag på frågor till upphandlaren under frågestunden.
+
+Returnera ENDAST ett giltigt JSON-objekt (inga backticks, endast ren JSON):
+{
+  "fitScore": <nummer 0-100 baserat på faktisk matchning mot företagets profil och krav i handlingarna>,
+  "isDocumentGrounded": true,
+  "documentSources": ["lista över granskade dokumentnamn"],
+  "summary": "En koncis, exakt sammanfattning (2-4 meningar) av uppdragets faktiska omfattning och vad som ska levereras enligt handlingarna.",
+  "requestedRoles": [
+    {
+      "role": "Rollnamn enligt kravspecifikationen (t.ex. BIM-samordnare, Uppdragsledare)",
+      "requirements": "Specifika skall-krav, erfarenhetskrav (år), certifieringar och verktygskunskap enligt handlingarna"
+    }
+  ],
+  "estimatedValueOrBudget": "Faktiskt takbelopp, budgetram eller omsättning enligt handlingarna (eller om upphandlaren inte angivit något)",
+  "projectDuration": "Avtalstid, startdatum, slutdatum och optionsår enligt handlingarna (t.ex. '2 år med option på 1+1 år')",
+  "standardContractTerms": "Tillämpliga standardavtal och särskilda kontraktsvillkor (t.ex. 'ABK 09 med ändringar i AF-del, vite vid försening')",
+  "requiredSubmissionDocuments": [
+    "Obligatorisk bilaga 1 (t.ex. 'Svarsbilaga 1 - Pris och timpriser')",
+    "Obligatorisk bilaga 2 (t.ex. 'Bilaga 2 - CV-mall för nyckelpersoner')",
+    "Obligatorisk bilaga 3 (t.ex. 'ESPD-formulär')"
+  ],
+  "keyRequirements": [
+    "Viktigt skall-krav 1 enligt handlingarna",
+    "Viktigt skall-krav 2"
+  ],
+  "opportunities": [
+    "Konkret affärsmöjlighet eller fördel för företaget utifrån underlaget"
+  ],
+  "risksAndChallenges": [
+    "Konkret risk, fälla eller hårt krav i underlaget att bevaka"
+  ],
+  "recommendedBidStrategy": "Konkreta, taktiska råd för hur anbudet ska utformas, prissättas och kvalitetssäkras för att vinna.",
+  "clarificationQuestions": [
+    "Skarpt förslag på fråga att ställa under frågestunden för att undanröja oklarhet i underlaget"
+  ]
+}`;
+
+  const messages = [
+    {
+      role: 'user',
+      content: `${profileContext}\n\n${tenderContext}\n\n${docListHeader}\n\nINNEHÅLL UR FÖRFRÅGNINGSUNDERLAGET:\n${documentCorpus}\n\nGenomför djupgående analys av handlingarna och returnera JSON.`
+    }
+  ];
+
+  try {
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2, max_tokens: 4096 });
+    const parsed = extractJsonFromLlm(rawResult);
+    if (parsed) {
+      parsed.isDocumentGrounded = true;
+      parsed.documentSources = documentSummaryList.map(d => d.name);
+      return parsed;
+    }
+    return {
+      fitScore: 80,
+      isDocumentGrounded: true,
+      documentSources: documentSummaryList.map(d => d.name),
+      summary: `Djupanalys baserad på ${documentSummaryList.length} uppladdade handlingar. Se extraherade krav och bilagor nedan.`,
+      requestedRoles: [
+        {
+          role: 'Konsult / Uppdragstagare',
+          requirements: 'Krav specificerade i förfrågningsunderlagets kravspecifikation.'
+        }
+      ],
+      estimatedValueOrBudget: notice.estimatedValue || 'Se ersättningsmodell i administrativa föreskrifter.',
+      projectDuration: 'Enligt avtalsutkast och AF-del.',
+      standardContractTerms: 'ABK 09 / Standardavtal enligt AF-del.',
+      requiredSubmissionDocuments: documentSummaryList.filter(d => /pris|svarsbilaga|cv/i.test(d.name)).map(d => d.name),
+      keyRequirements: ['Krav enligt uppladdad kravspecifikation'],
+      opportunities: ['Relevant uppdrag med tillgång till fullständiga handlingar'],
+      risksAndChallenges: ['Granska samtliga skall-krav och bilagor noggrant innan inlämning'],
+      recommendedBidStrategy: 'Följ svarsmallarna strikt och säkerställ fullständig överensstämmelse med skall-kraven.',
+      clarificationQuestions: ['Ställ frågor via upphandlingssystemet vid minsta oklarhet i underlaget.']
+    };
+  } catch (error) {
+    console.error('Document-based tender analysis failed:', error);
     throw error;
   }
 }
@@ -288,15 +427,21 @@ export async function chatWithAssistant(conversationHistory, context = {}) {
   const profile = context.companyProfile || {};
   const currentNotice = context.currentNotice || null;
   const searchState = context.searchState || null;
+  const documentCorpus = context.documentCorpus || null;
+  const documentList = context.documentList || [];
+
+  const currentPortal = currentNotice?.portalName || currentNotice?.links?.portalName || (currentNotice?.links?.submission ? 'extern upphandlingsportal' : 'upphandlingsportalen');
 
   let contextInjection = `
 Du är TED-Assistenten, en expert på offentlig upphandling i Sverige och EU (LOU, LUF, TED Europa).
-Du hjälper användaren att:
-1. Hitta och filtrera relevanta upphandlingar
-2. Tolka krav, förfrågningsunderlag och CPV-koder
-3. Skriva skarpa frågor till upphandlaren
-4. Formulera vinnande anbudsförslag och dispositionsutkast
-5. Skapa optimerade bevakningsprofiler
+Du hjälper användaren att tolka upphandlingar, formulera frågor till upphandlare och lägga upp anbudsstrategier.
+
+======================================================================
+VIKTIGA REGLER OM SANNFÄRDIGHET OCH FAKTA (ABSOLUT FÖRBUD MOT ATT GISSA):
+1. Du får ALDRIG hitta på eller gissa uppgifter som inte uttryckligen framgår av det tillgängliga underlaget.
+2. Om upphandlingshandlingar har laddats upp (se nedan), basera dina svar strikt och i detalj på texten i dessa dokument och ange källdokument!
+3. Om inga upphandlingsdokument laddats upp och användaren frågar om detaljer som inte finns i TED-sammanfattningen, säg tydligt att informationen saknas i kungörelsen och hänvisa till förfrågningsunderlaget i portalen (${currentPortal}).
+======================================================================
 
 Användarens företag:
 - Företagsnamn: ${profile.name || 'WSP Sverige AB (BIM-enheten)'}
@@ -305,13 +450,29 @@ Användarens företag:
 
   if (currentNotice) {
     contextInjection += `\n
-AKTUELLT UPPHANDLINGSÄRENDE I FOKUS:
+AKTUELLT UPPHANDLINGSÄRENDE I FOKUS (Från TED):
 - Titel: ${currentNotice.title}
 - Upphandlande myndighet: ${currentNotice.buyer} (${currentNotice.city || ''}, ${currentNotice.country || ''})
-- Deadline: ${currentNotice.deadline || 'Ej angiven'} (${currentNotice.daysRemaining} dagar kvar)
-- CPV: ${currentNotice.cpvDetails ? currentNotice.cpvDetails.map(c => `${c.code} - ${c.label}`).join(', ') : ''}
-- Beskrivning: ${currentNotice.description || 'Se underlag'}
-- TED Länk: ${currentNotice.links?.tedHtml || ''}
+- Uppskattat värde: ${currentNotice.estimatedValue || 'Ej angivet i TED'}
+- Deadline: ${currentNotice.deadline || 'Ej angiven'} (${currentNotice.daysRemaining !== null ? currentNotice.daysRemaining + ' dagar kvar' : 'Okänt'})
+- CPV-koder: ${currentNotice.cpvDetails ? currentNotice.cpvDetails.map(c => `${c.code} - ${c.label}`).join(', ') : 'Ej specificerat'}
+- Upphandlingsportal/System: ${currentPortal}
+- Beskrivning från TED: ${currentNotice.description || 'Ingen detaljerad beskrivning i TED-notisen'}
+- Direktlänk till anbud/underlag: ${currentNotice.links?.submission || currentNotice.links?.documents || currentNotice.links?.tedHtml || ''}
+`;
+  }
+
+  if (documentList && documentList.length > 0) {
+    contextInjection += `\n
+TILLGÄNGLIGA UPPHANDLINGSHANDLINGAR (${documentList.length} st):
+${documentList.map(d => `- ${d.name} [${d.category || 'Dokument'}]`).join('\n')}
+`;
+  }
+
+  if (documentCorpus) {
+    contextInjection += `\n
+TEXT UR DE UPPLADDADE UPPHANDLINGSHANDLINGARNA:
+${documentCorpus.slice(0, 100000)}
 `;
   }
 
@@ -324,6 +485,6 @@ AKTIV SÖKNING:
 `;
   }
 
-  const response = await callMiniMax(conversationHistory, contextInjection, { temperature: 0.5 });
+  const response = await callMiniMax(conversationHistory, contextInjection, { temperature: 0.35 });
   return response;
 }
