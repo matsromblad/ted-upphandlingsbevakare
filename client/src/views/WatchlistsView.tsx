@@ -12,7 +12,9 @@ import {
   AlertCircle,
   Coins,
   Globe2,
-  ExternalLink
+  ExternalLink,
+  Bookmark,
+  Check
 } from 'lucide-react';
 import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
@@ -165,6 +167,20 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
     window.open(`/api/export/hits?format=${format}`, '_blank');
   };
 
+  const isTenderSaved = (noticeId: string) => {
+    return savedTenders.some(t => t.notice_id === noticeId);
+  };
+
+  const handleSaveToPipeline = async (notice: Notice, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.saveToPipeline(notice);
+      onTenderSaved();
+    } catch (err) {
+      console.error('Failed to save to pipeline:', err);
+    }
+  };
+
   const unreadCount = hits.filter(h => !h.is_read).length;
   const filteredHits = selectedWatchlistId
     ? hits.filter(h => h.watchlist_id === selectedWatchlistId)
@@ -308,6 +324,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                 const notice = hit.notice;
                 if (!notice) return null;
                 const isUnread = !hit.is_read;
+                const isSaved = isTenderSaved(notice.id);
                 const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
 
                 return (
@@ -386,6 +403,18 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                           <span>{notice.portalName || 'Anbud'}</span>
                         </a>
                       )}
+                      <button
+                        onClick={(e) => handleSaveToPipeline(notice, e)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                          isSaved
+                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                            : 'border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 text-slate-700 dark:text-slate-300 hover:text-emerald-700'
+                        }`}
+                        title={isSaved ? 'Sparad i anbudspipelinen' : 'Spara till anbudspipelinen'}
+                      >
+                        <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-emerald-600 text-emerald-600' : ''}`} />
+                        <span>{isSaved ? 'Sparad' : 'Spara'}</span>
+                      </button>
                       <button
                         onClick={() => onOpenNoticeDetail(notice)}
                         className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold"
