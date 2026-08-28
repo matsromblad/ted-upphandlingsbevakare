@@ -132,6 +132,8 @@ router.post('/auth/signup', async (req, res) => {
 router.post('/ted/search', async (req, res) => {
   try {
     const { filters = {}, page = 1, limit = 20 } = req.body;
+    const targetPage = Math.max(1, parseInt(page) || 1);
+    const targetLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
     
     // Check if query is a direct publication number search
     const kw = (typeof filters.keywords === 'string' ? filters.keywords : '').trim();
@@ -153,7 +155,7 @@ router.post('/ted/search', async (req, res) => {
 
     // Execute both TED search and Magnit search in parallel
     const [tedResult, magnitResult] = await Promise.allSettled([
-      searchTedNotices(filters, { page, limit: 100 }),
+      searchTedNotices(filters, { page: targetPage, limit: targetLimit }),
       searchMagnitNotices(filters)
     ]);
 
@@ -161,24 +163,33 @@ router.post('/ted/search', async (req, res) => {
     const magnitSuccess = magnitResult.status === 'fulfilled' && magnitResult.value.success;
 
     const tedNotices = tedSuccess ? (tedResult.value.notices || []) : [];
+    const tedTotal = tedSuccess ? (tedResult.value.totalCount || 0) : 0;
+
     const magnitNotices = magnitSuccess ? (magnitResult.value.notices || []) : [];
+    const magnitTotal = magnitSuccess ? (magnitResult.value.totalCount || 0) : 0;
 
-    // Merge notices
-    const allNotices = [...tedNotices, ...magnitNotices];
+    const totalCount = tedTotal + magnitTotal;
+    const totalPages = Math.max(1, Math.ceil(totalCount / targetLimit));
 
-    // Sort combined notices by publicationDate DESC
-    allNotices.sort((a, b) => {
-      const dateA = a.publicationDate || '';
-      const dateB = b.publicationDate || '';
-      return dateB.localeCompare(dateA);
-    });
+    let finalNotices = [];
 
-    const targetPage = Math.max(1, parseInt(page) || 1);
-    const targetLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
-    const totalCount = (tedSuccess ? (tedResult.value.totalCount || 0) : 0) + (magnitSuccess ? (magnitResult.value.totalCount || 0) : 0);
+    if (magnitTotal === 0) {
+      finalNotices = tedNotices;
+    } else if (tedTotal === 0) {
+      const pageStart = (targetPage - 1) * targetLimit;
+      finalNotices = magnitNotices.slice(pageStart, pageStart + targetLimit);
+    } else {
+      const pageStart = (targetPage - 1) * targetLimit;
+      const pageEnd = targetPage * targetLimit;
+      const magnitInPage = magnitNotices.slice(pageStart, pageEnd);
 
-    const startIndex = (targetPage - 1) * targetLimit;
-    const paginatedNotices = allNotices.slice(startIndex, startIndex + targetLimit);
+      if (magnitInPage.length === targetLimit) {
+        finalNotices = magnitInPage;
+      } else {
+        const remainingSlots = targetLimit - magnitInPage.length;
+        finalNotices = [...magnitInPage, ...tedNotices.slice(0, remainingSlots)];
+      }
+    }
 
     res.json({
       success: true,
@@ -186,8 +197,8 @@ router.post('/ted/search', async (req, res) => {
       totalCount,
       page: targetPage,
       limit: targetLimit,
-      totalPages: Math.ceil(totalCount / targetLimit) || 1,
-      notices: paginatedNotices.length > 0 ? paginatedNotices : allNotices.slice(0, targetLimit)
+      totalPages,
+      notices: finalNotices
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
