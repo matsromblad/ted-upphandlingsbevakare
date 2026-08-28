@@ -146,7 +146,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+      <main className="flex-1 max-w-[1920px] w-full mx-auto px-3 sm:px-5 lg:px-7 xl:px-8 pt-6">
         {currentView === 'search' && (
           <SearchView
             onOpenNoticeDetail={handleOpenNoticeDetail}
@@ -187,7 +187,7 @@ export const App: React.FC = () => {
 
       {/* Global Footer */}
       <footer className="mt-12 border-t border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
+        <div className="max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-7 xl:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white font-bold text-[10px]">
               TED

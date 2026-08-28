@@ -578,7 +578,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
       ) : viewMode === 'card' ? (
         /* CARD VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
           {notices.map((notice) => {
             const isSaved = isTenderSaved(notice.id);
             const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);

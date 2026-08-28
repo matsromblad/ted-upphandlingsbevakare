@@ -216,7 +216,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
           </button>
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-6 pt-1 items-start">
+        <div className="flex gap-3 2xl:gap-4 overflow-x-auto pb-6 pt-1 items-start w-full">
           {COLUMNS.map((col) => {
             const colTenders = filteredTenders.filter(t => t.status === col.id);
             const isDragOver = dragOverColumnId === col.id;
@@ -227,14 +227,14 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                 onDragOver={(e) => handleDragOver(e, col.id)}
                 onDragLeave={(e) => handleDragLeave(e, col.id)}
                 onDrop={(e) => handleDrop(e, col.id)}
-                className={`w-80 flex-shrink-0 rounded-2xl border transition-all flex flex-col max-h-[78vh] overflow-hidden ${
+                className={`flex-1 min-w-[240px] max-w-[340px] rounded-2xl border transition-all flex flex-col max-h-[78vh] overflow-hidden ${
                   isDragOver
                     ? 'bg-ted-50/70 dark:bg-ted-950/40 border-ted-500 shadow-lg ring-2 ring-ted-500/40 scale-[1.01]'
                     : 'bg-slate-100/70 dark:bg-slate-850/70 border-slate-200/80 dark:border-slate-800'
                 }`}
               >
                 {/* Column Header */}
-                <div className={`p-3.5 border-b flex items-center justify-between backdrop-blur-sm transition-colors ${
+                <div className={`p-3 2xl:p-3.5 border-b flex items-center justify-between backdrop-blur-sm transition-colors ${
                   isDragOver
                     ? 'bg-ted-100/80 dark:bg-ted-900/60 border-ted-400 dark:border-ted-600'
                     : 'bg-white/70 dark:bg-slate-900/70 border-slate-200/80 dark:border-slate-800'
