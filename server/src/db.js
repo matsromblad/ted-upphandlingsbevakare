@@ -237,6 +237,8 @@ async function normalizeWatchlistCollection(watchlists) {
   return Promise.all((watchlists || []).map(normalizeWatchlistRecord));
 }
 
+export const isCloudUser = (userId) => Boolean(isSupabaseConfigured && userId && userId !== '00000000-0000-0000-0000-000000000000');
+
 // ==============================================================================
 // WATCHLISTS DAO (Supabase + Local SQLite)
 // ==============================================================================
@@ -263,7 +265,7 @@ export const watchlistDao = {
   },
 
   getAll: async (userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('watchlists')
         .select('*')
@@ -298,7 +300,7 @@ export const watchlistDao = {
   },
 
   getById: async (id, userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       let query = supabaseAdmin.from('watchlists').select('*').eq('id', id);
       if (userId) query = query.eq('user_id', userId);
       const { data } = await query.single();
@@ -332,7 +334,7 @@ export const watchlistDao = {
   },
 
   create: async (item) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(item.user_id)) {
       const payload = {
         id: item.id,
         user_id: item.user_id,
@@ -372,7 +374,7 @@ export const watchlistDao = {
   },
 
   update: async (id, userId, item) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const payload = {
         name: item.name,
         query: item.query,
@@ -430,7 +432,7 @@ export const watchlistDao = {
   },
 
   updateEmailSentAt: async (id, userId, sentAt) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { error } = await supabaseAdmin
         .from('watchlists')
         .update({ last_email_sent_at: sentAt })
@@ -473,7 +475,7 @@ export const watchlistDao = {
   },
 
   delete: async (id, userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       await supabaseAdmin.from('watchlist_hits').delete().eq('watchlist_id', id).eq('user_id', userId);
       await supabaseAdmin.from('watchlists').delete().eq('id', id).eq('user_id', userId);
       return;
@@ -489,7 +491,7 @@ export const watchlistDao = {
 // ==============================================================================
 export const hitsDao = {
   getByWatchlistId: async (watchlistId, userId, limit = 100) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('watchlist_hits')
         .select('*')
@@ -513,7 +515,7 @@ export const hitsDao = {
   },
 
   getAllRecentHits: async (userId, limit = 100) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('watchlist_hits')
         .select('*, watchlists(name)')
@@ -539,7 +541,7 @@ export const hitsDao = {
   },
 
   getPendingEmailHits: async (watchlistId, userId, limit = 250) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('watchlist_hits')
         .select('*')
@@ -567,7 +569,7 @@ export const hitsDao = {
   },
 
   insertHit: async (hit) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(hit.user_id)) {
       try {
         const payload = {
           id: hit.id,
@@ -597,7 +599,7 @@ export const hitsDao = {
   },
 
   markAsRead: async (id, userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data: hit } = await supabaseAdmin
         .from('watchlist_hits')
         .select('watchlist_id, is_read')
@@ -623,7 +625,7 @@ export const hitsDao = {
   },
 
   markAllAsRead: async (userId, watchlistId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       let query = supabaseAdmin.from('watchlist_hits').update({ is_read: true }).eq('user_id', userId);
       if (watchlistId) {
         query = query.eq('watchlist_id', watchlistId);
@@ -649,7 +651,7 @@ export const hitsDao = {
       return;
     }
 
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { error } = await supabaseAdmin
         .from('watchlist_hits')
         .update({ emailed_at: emailedAt })
@@ -672,7 +674,7 @@ export const hitsDao = {
   },
 
   getUnreadCount: async (userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { count } = await supabaseAdmin
         .from('watchlist_hits')
         .select('*', { count: 'exact', head: true })
@@ -691,7 +693,7 @@ export const hitsDao = {
 // ==============================================================================
 export const pipelineDao = {
   getAll: async (userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('saved_tenders')
         .select('*')
@@ -710,7 +712,7 @@ export const pipelineDao = {
   },
 
   getByNoticeId: async (noticeId, userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data } = await supabaseAdmin
         .from('saved_tenders')
         .select('*')
@@ -732,7 +734,7 @@ export const pipelineDao = {
   save: async (item) => {
     const userId = item.user_id;
 
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const payload = {
         id: item.id,
         user_id: userId,
@@ -807,7 +809,7 @@ export const pipelineDao = {
   },
 
   updateStatus: async (id, userId, status) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('saved_tenders')
         .update({ status, updated_at: new Date().toISOString() })
@@ -828,7 +830,7 @@ export const pipelineDao = {
   },
 
   updateNotes: async (id, userId, notes, internalDeadline, priority, assignedTo, tagsJson) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('saved_tenders')
         .update({
@@ -857,7 +859,7 @@ export const pipelineDao = {
   },
 
   updateAiAnalysis: async (noticeId, userId, aiJson) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       await supabaseAdmin
         .from('saved_tenders')
         .update({
@@ -877,7 +879,7 @@ export const pipelineDao = {
   },
 
   delete: async (id, userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data: item } = await supabaseAdmin.from('saved_tenders').select('notice_id').eq('id', id).eq('user_id', userId).single();
       if (item) {
         await supabaseAdmin.from('watchlist_hits').update({ is_saved: false }).eq('notice_id', item.notice_id).eq('user_id', userId);
@@ -899,7 +901,7 @@ export const pipelineDao = {
 // ==============================================================================
 export const profileDao = {
   get: async (userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).single();
       if (!data || !data.company_name || data.company_name === 'Mitt Företag AB') {
         return {
@@ -936,7 +938,7 @@ export const profileDao = {
   },
 
   update: async (userId, data) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const payload = {
         company_name: data.name,
         description: data.description,
@@ -976,7 +978,7 @@ export const profileDao = {
   },
 
   getNotificationRecipient: async (userId) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('profiles')
         .select('email, full_name, company_name')
@@ -1000,6 +1002,53 @@ export const profileDao = {
       fullName: row?.full_name || 'Lokal Användare',
       companyName: row?.company_name || 'Mitt Företag AB'
     };
+  },
+
+  getActiveUsers: async () => {
+    const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('profiles')
+          .select('id, email, full_name, last_active_at, updated_at, created_at')
+          .order('full_name', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          return data.map(p => ({
+            id: p.id,
+            name: p.full_name || p.email?.split('@')[0] || 'Användare',
+            email: p.email || '',
+            lastActiveAt: p.last_active_at || p.updated_at || p.created_at
+          }));
+        }
+      } catch (e) {
+        console.warn('[Profile DAO] Error loading active users from Supabase:', e.message);
+      }
+    }
+
+    try {
+      const rows = localDb.prepare(`
+        SELECT id, email, full_name, last_active_at, updated_at
+        FROM profiles
+        ORDER BY full_name ASC
+      `).all();
+
+      if (rows && rows.length > 0) {
+        return rows.map(r => ({
+          id: r.id,
+          name: r.full_name || r.email?.split('@')[0] || 'Lokal Användare',
+          email: r.email || '',
+          lastActiveAt: r.last_active_at || r.updated_at
+        }));
+      }
+    } catch (e) {
+      // Local fallback
+    }
+
+    return [
+      { id: '1c041146-f711-4dc3-bf0c-3c30a7c0625a', name: 'Mats Romblad', email: 'mats.romblad@wsp.com', lastActiveAt: new Date().toISOString() }
+    ];
   }
 };
 
@@ -1008,7 +1057,7 @@ export const profileDao = {
 // ==============================================================================
 export const chatDao = {
   getMessages: async (userId, sessionId = 'default', limit = 50) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       const { data, error } = await supabaseAdmin
         .from('chat_messages')
         .select('*')
@@ -1029,7 +1078,7 @@ export const chatDao = {
   },
 
   addMessage: async (item) => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(item.user_id)) {
       await supabaseAdmin.from('chat_messages').insert({
         id: item.id,
         user_id: item.user_id,
@@ -1048,7 +1097,7 @@ export const chatDao = {
   },
 
   clearSession: async (userId, sessionId = 'default') => {
-    if (isSupabaseConfigured) {
+    if (isCloudUser(userId)) {
       await supabaseAdmin.from('chat_messages').delete().eq('user_id', userId).eq('session_id', sessionId);
       return;
     }

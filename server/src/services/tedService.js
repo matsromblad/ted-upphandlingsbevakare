@@ -193,7 +193,6 @@ export function formatEstimatedValue(amount, currency = 'SEK') {
     humanized: humanized || full,
     display: humanized ? `${full} (~${humanized})` : full
   };
->>>>>>> aaa1847 (feat: enhance tender details, XML parsing, about view, and pipeline UI)
 }
 
 /**

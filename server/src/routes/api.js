@@ -305,9 +305,7 @@ router.post('/watchlists', requireAuth, async (req, res) => {
     if (!name) {
       return res.status(400).json({ error: 'Namn på bevakning krävs' });
     }
-    if (!VALID_EMAIL_FREQUENCIES.has(emailFrequency)) {
-      return res.status(400).json({ error: 'E-postutskick måste vara daily eller weekly' });
-    }
+    const resolvedEmailFrequency = resolveEmailFrequency(emailFrequency, 'daily');
 
     const query = buildExpertQuery(filters);
     const id = uuidv4();
@@ -320,7 +318,7 @@ router.post('/watchlists', requireAuth, async (req, res) => {
       filters_json: JSON.stringify(filters),
       active: 1,
       interval_minutes: 60,
-      email_frequency: emailFrequency,
+      email_frequency: resolvedEmailFrequency,
       unsubscribe_token: uuidv4()
     });
 
@@ -546,6 +544,15 @@ router.get('/cpv', (req, res) => {
   const { q } = req.query;
   const results = searchCpv(q);
   res.json({ success: true, categories: results });
+});
+
+router.get('/users/active', requireAuth, async (req, res) => {
+  try {
+    const users = await profileDao.getActiveUsers();
+    res.json({ success: true, users });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 router.get('/profile', requireAuth, async (req, res) => {

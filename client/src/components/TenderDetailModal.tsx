@@ -34,6 +34,7 @@ import {
 import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole } from '../types';
 import { api } from '../api';
 import { getDeadlineInfo, formatDeadline } from '../utils/dateUtils';
+import { UserSelectDropdown } from './UserSelectDropdown';
 
 interface TenderDetailModalProps {
   notice: Notice | null;
@@ -1097,15 +1098,15 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                   />
                 </div>
 
-                {/* Assigned To */}
+                {/* Assigned To (Searchable Dropdown of WSP users) */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Ansvarig person</label>
-                  <input
-                    type="text"
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                    Ansvarig person (WSP)
+                  </label>
+                  <UserSelectDropdown
                     value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
-                    placeholder="t.ex. Anna Svensson"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-ted-500 shadow-sm"
+                    onChange={setAssignedTo}
+                    placeholder="Välj eller sök ansvarig kollega..."
                   />
                 </div>
               </div>

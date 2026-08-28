@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Bell, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Bell, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { NoticeFilters, Watchlist, WatchlistEmailFrequency } from '../types';
 import { api } from '../api';
 
@@ -21,17 +21,26 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
   const [name, setName] = useState(defaultName || 'Ny Bevakningsprofil');
   const [emailFrequency, setEmailFrequency] = useState<WatchlistEmailFrequency>('daily');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(defaultName || 'Ny Bevakningsprofil');
+      setError(null);
+    }
+  }, [isOpen, defaultName]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || loading) return;
 
     setLoading(true);
+    setError(null);
     try {
       const res = await api.createWatchlist({
-        name,
+        name: name.trim(),
         filters,
         emailFrequency
       });
@@ -39,9 +48,12 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
       if (res.success && res.watchlist) {
         onWatchlistCreated(res.watchlist);
         onClose();
+      } else {
+        setError(res.error || 'Kunde inte spara bevakningsprofilen.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to create watchlist:', e);
+      setError(e.message || 'Ett oväntat fel uppstod vid sparande av bevakning.');
     } finally {
       setLoading(false);
     }
@@ -68,6 +80,16 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
           </button>
         </div>
 
+        {error && (
+          <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Kunde inte spara bevakning</p>
+              <p className="text-[11px] mt-0.5">{error}</p>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Namn på bevakning</label>
@@ -86,7 +108,7 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
             <div className="grid grid-cols-2 gap-2">
               {[
                 { val: 'daily', label: 'Dagligen', description: 'Sammanfattning varje dag' },
-                { val: 'weekly', label: 'Veckovis', description: 'Sammanfattning en gang per vecka' }
+                { val: 'weekly', label: 'Veckovis', description: 'Sammanfattning en gång per vecka' }
               ].map((opt) => (
                 <button
                   type="button"
@@ -104,7 +126,7 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
               ))}
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Bevakningen fortsatter att leta nya upphandlingar i bakgrunden, men mail skickas bara enligt valt schema.
+              Bevakningen fortsätter att leta nya upphandlingar i bakgrunden, men mail skickas bara enligt valt schema.
             </p>
           </div>
 
@@ -127,10 +149,10 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold text-sm shadow-md shadow-amber-500/20 flex items-center gap-2"
+              className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold text-sm shadow-md shadow-amber-500/20 flex items-center gap-2 disabled:opacity-50"
             >
-              <Check className="w-4 h-4" />
-              {loading ? 'Skapar...' : 'Aktivera bevakning'}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {loading ? 'Sparar bevakning...' : 'Aktivera bevakning'}
             </button>
           </div>
         </form>

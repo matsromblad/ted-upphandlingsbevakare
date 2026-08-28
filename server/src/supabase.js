@@ -56,6 +56,20 @@ export async function requireAuth(req, res, next) {
         const { data: { user }, error } = await supabaseAdmin.auth.getUser(jwtToken);
         if (!error && user) {
           req.user = user;
+          // Asynchronously update last_active_at on profiles
+          const fullName = user.user_metadata?.full_name || user.user_metadata?.name || '';
+          const email = user.email || '';
+          supabaseAdmin
+            .from('profiles')
+            .upsert({
+              id: user.id,
+              email,
+              full_name: fullName,
+              last_active_at: new Date().toISOString()
+            }, { onConflict: 'id' })
+            .then(() => {})
+            .catch(() => {});
+
           return next();
         }
       } catch (err) {

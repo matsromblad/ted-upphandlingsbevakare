@@ -161,3 +161,10 @@ export interface CpvCategory {
   icon: string;
   subcategories: CpvSubcategory[];
 }
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  lastActiveAt?: string;
+}

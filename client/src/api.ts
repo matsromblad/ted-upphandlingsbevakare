@@ -8,7 +8,8 @@ import {
   CompanyProfile,
   ChatMessage,
   AIAnalysis,
-  CpvCategory
+  CpvCategory,
+  TeamMember
 } from './types';
 import { getAccessToken } from './supabaseClient';
 
@@ -286,6 +287,12 @@ export const api = {
 
   getCpvCategories: async (q = ''): Promise<{ success: boolean; categories: CpvCategory[] }> => {
     const res = await fetch(`${API_BASE}/cpv?q=${encodeURIComponent(q)}`);
+    return res.json();
+  },
+
+  getActiveUsers: async (): Promise<{ success: boolean; users: TeamMember[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/users/active`, { headers });
     return res.json();
   }
 };
