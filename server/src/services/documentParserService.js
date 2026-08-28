@@ -12,28 +12,43 @@ const mammoth = require('mammoth');
  */
 export function categorizeDocument(fileName = '') {
   const lower = fileName.toLowerCase();
-  if (/pris|svarsbilaga|ersätt|ersatt|timpris|kalkyl|kostnad|budget/i.test(lower)) {
+  
+  if (/pris|ersätt|ersatt|timpris|kalkyl|kostnad|budget|arvode|taxa|mängd|mangd|svarsbilaga.*pris|bilaga.*pris|prisblankett/i.test(lower)) {
     return 'Prisbilaga & Ersättningsmodell';
   }
-  if (/(?:^|[_\-\s])af[_\-\s.]|administrativ|föreskrift|foreskrift|anbudsinbjudan|förutsättning/i.test(lower)) {
-    return 'Administrativa Föreskrifter (AF)';
-  }
-  if (/krav|spec|teknisk|uppdragsbeskrivning|funktionsbeskrivning|projekteringsanvisning/i.test(lower)) {
+  if (/krav|spec|teknisk|uppdragsbeskrivning|funktionsbeskrivning|projekteringsanvisning|omfattning|leveransbeskrivning|arbetsbeskrivning|bilaga.*krav|bilaga.*spec/i.test(lower)) {
     return 'Kravspecifikation & Uppdragsbeskrivning';
   }
-  if (/avtal|kontrakt|abk|ab04|abt06|villkor/i.test(lower)) {
+  if (/(?:^|[_\-\s])af[_\-\s.]|administrativ|föreskrift|foreskrift|anbudsinbjudan|förutsättning|afb|afc|afd|afe|aff|afg|inbjudan/i.test(lower)) {
+    return 'Administrativa Föreskrifter (AF)';
+  }
+  if (/avtal|kontrakt|abk|ab04|abt06|villkor|ramavtalsmall|avtalsutkast|kontraktsmall/i.test(lower)) {
     return 'Avtalsmall & Kontraktsvillkor';
   }
-  if (/cv|referens|kompetens|nyckelperson/i.test(lower)) {
+  if (/cv|referens|kompetens|nyckelperson|resurs|personalförteckning/i.test(lower)) {
     return 'CV & Referensmall';
   }
-  if (/espd|sanningsförsäkran|uteslutning|kvalificering/i.test(lower)) {
+  if (/espd|sanningsförsäkran|uteslutning|kvalificering|krav_på_leverantör/i.test(lower)) {
     return 'Kvalificering & ESPD';
   }
-  if (/fråga|svar|fragor|f&s|q&a|komplettering/i.test(lower)) {
+  if (/fråga|svar|fragor|f&s|q&a|komplettering|förtydligande/i.test(lower)) {
     return 'Frågor & Svar / Förtydliganden';
   }
   return 'Övrigt förfrågningsunderlag';
+}
+
+/**
+ * Clean text extracted from files (remove control chars, excessive whitespace, null bytes)
+ */
+function cleanExtractedText(raw = '') {
+  if (!raw) return '';
+  return raw
+    .replace(/\0/g, '') // remove null bytes
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // remove ASCII control characters
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n') // collapse multiple blank lines
+    .replace(/[ \t]{3,}/g, '  ') // collapse multiple horizontal spaces
+    .trim();
 }
 
 /**
@@ -45,12 +60,12 @@ export async function extractTextFromFile(buffer, fileName) {
   try {
     if (ext === '.pdf') {
       const data = await pdfParse(buffer);
-      return data.text ? data.text.trim() : '';
+      return cleanExtractedText(data.text || '');
     }
 
     if (ext === '.docx') {
       const result = await mammoth.extractRawText({ buffer });
-      return result.value ? result.value.trim() : '';
+      return cleanExtractedText(result.value || '');
     }
 
     if (ext === '.xlsx' || ext === '.xls' || ext === '.csv') {
@@ -65,21 +80,22 @@ export async function extractTextFromFile(buffer, fileName) {
           }
         }
       }
-      return sheetTexts.join('\n\n');
+      return cleanExtractedText(sheetTexts.join('\n\n'));
     }
 
     if (['.txt', '.rtf', '.md', '.json', '.xml', '.html', '.htm'].includes(ext)) {
       const raw = buffer.toString('utf-8');
       if (ext === '.html' || ext === '.htm') {
-        return raw.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+        const cleanedHtml = raw.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+        return cleanExtractedText(cleanedHtml);
       }
-      return raw.trim();
+      return cleanExtractedText(raw);
     }
 
     return '';
   } catch (err) {
     console.warn(`[DocumentParser] Error parsing ${fileName}:`, err.message);
-    return `[Kunde inte läsa innehållet i ${fileName}: ${err.message}]`;
+    return `[Dokument: ${fileName} - Kunde inte läsa innehållet: ${err.message}]`;
   }
 }
 
@@ -150,41 +166,70 @@ export async function parseUploadedProcurementFiles(files = []) {
     }
   }
 
-  // Sort documents by category priority (AF -> Krav -> Pris -> Avtal -> Övrigt)
-  const categoryOrder = [
-    'Administrativa Föreskrifter (AF)',
-    'Kravspecifikation & Uppdragsbeskrivning',
-    'Prisbilaga & Ersättningsmodell',
-    'Avtalsmall & Kontraktsvillkor',
-    'Kvalificering & ESPD',
-    'CV & Referensmall',
-    'Frågor & Svar / Förtydliganden',
-    'Övrigt förfrågningsunderlag'
-  ];
+  // Sort documents with Kravspecifikation & Prisbilaga FIRST so essential requirements are never starved
+  const categoryPriority = {
+    'Kravspecifikation & Uppdragsbeskrivning': 1,
+    'Prisbilaga & Ersättningsmodell': 2,
+    'Administrativa Föreskrifter (AF)': 3,
+    'Avtalsmall & Kontraktsvillkor': 4,
+    'CV & Referensmall': 5,
+    'Kvalificering & ESPD': 6,
+    'Frågor & Svar / Förtydliganden': 7,
+    'Övrigt förfrågningsunderlag': 8
+  };
 
   parsedDocuments.sort((a, b) => {
-    const idxA = categoryOrder.indexOf(a.category);
-    const idxB = categoryOrder.indexOf(b.category);
-    return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+    const pA = categoryPriority[a.category] || 99;
+    const pB = categoryPriority[b.category] || 99;
+    if (pA !== pB) return pA - pB;
+    return a.name.localeCompare(b.name, 'sv');
   });
 
-  // Assemble full context string for AI analysis with size guard
+  // Calculate dynamic per-document character budgets so ALL documents are included
+  const totalDocs = parsedDocuments.length;
+  const MAX_TOTAL_CHARS = 220000; // ~55,000 tokens (well within MiniMax-M3 128k context)
+
+  // Max characters allocated per document based on its category
+  const getDocCharLimit = (category, totalCount) => {
+    if (totalCount <= 3) {
+      if (category.startsWith('Krav') || category.startsWith('Pris')) return 70000;
+      if (category.startsWith('Admin')) return 60000;
+      return 40000;
+    }
+    if (totalCount <= 8) {
+      if (category.startsWith('Krav') || category.startsWith('Pris')) return 40000;
+      if (category.startsWith('Admin')) return 30000;
+      return 20000;
+    }
+    // For 9+ documents (e.g. 18 documents), ensure every document gets a generous quota
+    if (category.startsWith('Krav') || category.startsWith('Pris')) return 25000;
+    if (category.startsWith('Admin') || category.startsWith('Avtal')) return 18000;
+    if (category.startsWith('CV') || category.startsWith('Kvalificering')) return 12000;
+    return 8000;
+  };
+
   let combinedCorpus = '';
-  const MAX_TOTAL_CHARS = 180000; // ~45,000 tokens (safe and rich for MiniMax)
   let currentChars = 0;
 
   for (const doc of parsedDocuments) {
+    const docLimit = getDocCharLimit(doc.category, totalDocs);
     const docHeader = `\n\n======================================================================\nDOKUMENT: ${doc.name} [Kategori: ${doc.category}]\n======================================================================\n`;
     
+    let docContent = doc.text;
+    if (docContent.length > docLimit) {
+      // Keep beginning (70%) and end (30%) of long documents as key terms are often at start and end
+      const part1 = docContent.slice(0, Math.floor(docLimit * 0.7));
+      const part2 = docContent.slice(docContent.length - Math.floor(docLimit * 0.3));
+      docContent = `${part1}\n\n[... Utdrag förkortat: ${doc.name} innehåller ytterligare ${doc.charCount - docLimit} tecken ...]\n\n${part2}`;
+    }
+
     const availableSpace = MAX_TOTAL_CHARS - currentChars;
-    if (availableSpace <= 500) {
-      combinedCorpus += `\n[Fler dokument finns i underlaget men utelämnades för att hålla kontexten optimal]`;
+    if (availableSpace < 300) {
       break;
     }
 
-    let docContent = doc.text;
     if (docContent.length > availableSpace) {
-      docContent = docContent.slice(0, availableSpace) + '\n[...Text i dokumentet förkortades för att rymmas...]';
+      docContent = docContent.slice(0, availableSpace) + '\n[...Text i dokumentet avgränsades för att hålla kontexten optimal...]';
     }
 
     combinedCorpus += docHeader + docContent;

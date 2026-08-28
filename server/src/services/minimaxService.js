@@ -77,25 +77,60 @@ export async function callMiniMax(messages, systemPrompt = '', options = {}) {
 
 function extractJsonFromLlm(rawText) {
   if (!rawText) return null;
-  let cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*$/gi, '').trim();
   
+  // 1. Strip thinking tags if any remain
+  let cleaned = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  // 2. Remove markdown code blocks (```json ... ``` or ``` ...)
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  
+  // 3. Find outer JSON object boundaries
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
     cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
 
+  // Attempt 1: Direct JSON.parse
   try {
     return JSON.parse(cleaned);
-  } catch (err) {
+  } catch (e1) {
+    // Attempt 2: Clean trailing commas and control characters
     try {
-      const repaired = cleaned
+      let repaired = cleaned
         .replace(/,\s*}/g, '}')
-        .replace(/,\s*]/g, ']');
+        .replace(/,\s*]/g, ']')
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // strip ASCII control chars
       return JSON.parse(repaired);
     } catch (e2) {
-      console.warn('[MiniMax] JSON parse error:', err.message);
-      return null;
+      // Attempt 3: Fix unescaped newlines inside strings
+      try {
+        let fixedNewlines = cleaned
+          .replace(/:\s*"([^"]*)"/g, (match, p1) => {
+            return ': "' + p1.replace(/\n/g, '\\n').replace(/\r/g, '') + '"';
+          })
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']');
+        return JSON.parse(fixedNewlines);
+      } catch (e3) {
+        // Attempt 4: If JSON is truncated (unclosed brackets), attempt to close open structures
+        try {
+          let balanced = cleaned.trim();
+          const openBraces = (balanced.match(/\{/g) || []).length;
+          const closeBraces = (balanced.match(/\}/g) || []).length;
+          const openBrackets = (balanced.match(/\[/g) || []).length;
+          const closeBrackets = (balanced.match(/\]/g) || []).length;
+
+          if (balanced.endsWith(',')) balanced = balanced.slice(0, -1);
+          if (openBrackets > closeBrackets) balanced += ']'.repeat(openBrackets - closeBrackets);
+          if (openBraces > closeBraces) balanced += '}'.repeat(openBraces - closeBraces);
+
+          return JSON.parse(balanced);
+        } catch (e4) {
+          console.warn('[MiniMax] JSON parse and repair failed. Raw output preview:', cleaned.slice(0, 300));
+          return null;
+        }
+      }
     }
   }
 }
@@ -331,7 +366,22 @@ Du har nu fått tillgång till de FAKTISKA FÖRFRÅGNINGSHANDLINGARNA (Administr
 
 DITT UPPDRAG:
 Genomför en 100% faktaförankrad, djupgående anbudsanalys baserad på de uppladdade handlingarna.
-Koppla varje identifierat krav och villkor till det relevanta dokumentet (t.ex. "[AF-del.pdf]" eller "[Prisbilaga.xlsx]").
+Koppla varje identifierat krav och villkor till det relevanta dokumentet (t.ex. "[Kravspecifikation.docx]" eller "[Prisbilaga.xlsx]").
+
+======================================================================
+ABSOLUT FÖRBUD MOT METATEXT OCH PLATSHÅLLARE:
+- Du får ALDRIG svara med generella hänvisningar som:
+  * "Information finns i dokumentet"
+  * "Krav specificerade i förfrågningsunderlagets kravspecifikation"
+  * "Se ersättningsmodell i administrativa föreskrifter"
+  * "Enligt avtalsutkast och AF-del"
+- Du MÅSTE extrahera och skriva ut den FAKTISKA informationen:
+  * För roller: Vilken specifik yrkesroll eftersöks, hur många års erfarenhet krävs, vilka certifieringar/programvaror (t.ex. "BIM-samordnare med minst 5 års erfarenhet av Trafikverksprojekt och god kunskap i Navisworks/Civil 3D").
+  * För avtalsvillkor: Vilket specifikt standardavtal (t.ex. "ABK 09"), vilket vitesbelopp (t.ex. "10 000 kr/vecka"), vilka optionsår.
+  * För ersättning/pris: Vilket takpris, fast pris eller timpriser som anges i prisbilagan.
+  * För inlämningshandlingar: De exakta namnen på de bilagor och mallar som ska fyllas i och skickas in.
+- Om en uppgift faktiskt saknas i samtliga uppladdade handlingar ska du skriva "Framgår ej i de uppladdade handlingarna".
+======================================================================
 
 Analysera följande områden noggrant:
 1. Skall-krav & kvalificeringskrav (ekonomisk ställning, teknisk/yrkesmässig kapacitet, ISO-certifieringar, referensuppdrag).
@@ -350,21 +400,19 @@ Returnera ENDAST ett giltigt JSON-objekt (inga backticks, endast ren JSON):
   "summary": "En koncis, exakt sammanfattning (2-4 meningar) av uppdragets faktiska omfattning och vad som ska levereras enligt handlingarna.",
   "requestedRoles": [
     {
-      "role": "Rollnamn enligt kravspecifikationen (t.ex. BIM-samordnare, Uppdragsledare)",
-      "requirements": "Specifika skall-krav, erfarenhetskrav (år), certifieringar och verktygskunskap enligt handlingarna"
+      "role": "Specifikt rollnamn ur handlingarna (t.ex. BIM-samordnare)",
+      "requirements": "Exakta skall-krav på erfarenhet, utbildning och verktyg hämtade ur kravspecifikationen"
     }
   ],
-  "estimatedValueOrBudget": "Faktiskt takbelopp, budgetram eller omsättning enligt handlingarna (eller om upphandlaren inte angivit något)",
-  "projectDuration": "Avtalstid, startdatum, slutdatum och optionsår enligt handlingarna (t.ex. '2 år med option på 1+1 år')",
-  "standardContractTerms": "Tillämpliga standardavtal och särskilda kontraktsvillkor (t.ex. 'ABK 09 med ändringar i AF-del, vite vid försening')",
+  "estimatedValueOrBudget": "Faktiskt takbelopp, budgetram eller omsättning ur handlingarna (eller 'Framgår ej i underlaget')",
+  "projectDuration": "Exakt avtalstid, start/slut och optionsår ur handlingarna",
+  "standardContractTerms": "Exakta avtalsvillkor (t.ex. 'ABK 09 med ändringar enligt AF, vite 10 000 kr/vecka')",
   "requiredSubmissionDocuments": [
-    "Obligatorisk bilaga 1 (t.ex. 'Svarsbilaga 1 - Pris och timpriser')",
-    "Obligatorisk bilaga 2 (t.ex. 'Bilaga 2 - CV-mall för nyckelpersoner')",
-    "Obligatorisk bilaga 3 (t.ex. 'ESPD-formulär')"
+    "Exakt namn på obligatorisk inlämningsbilaga ur handlingarna"
   ],
   "keyRequirements": [
-    "Viktigt skall-krav 1 enligt handlingarna",
-    "Viktigt skall-krav 2"
+    "Exakt skall-krav 1 ur handlingarna",
+    "Exakt skall-krav 2 ur handlingarna"
   ],
   "opportunities": [
     "Konkret affärsmöjlighet eller fördel för företaget utifrån underlaget"
@@ -381,38 +429,67 @@ Returnera ENDAST ett giltigt JSON-objekt (inga backticks, endast ren JSON):
   const messages = [
     {
       role: 'user',
-      content: `${profileContext}\n\n${tenderContext}\n\n${docListHeader}\n\nINNEHÅLL UR FÖRFRÅGNINGSUNDERLAGET:\n${documentCorpus}\n\nGenomför djupgående analys av handlingarna och returnera JSON.`
+      content: `${profileContext}\n\n${tenderContext}\n\n${docListHeader}\n\nINNEHÅLL UR FÖRFRÅGNINGSUNDERLAGET:\n${documentCorpus}\n\nGenomför djupgående analys av handlingarna och returnera ren JSON med FAKTISKA data.`
     }
   ];
 
   try {
-    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2, max_tokens: 4096 });
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.1, max_tokens: 8192 });
     const parsed = extractJsonFromLlm(rawResult);
-    if (parsed) {
+    if (parsed && parsed.fitScore !== undefined) {
       parsed.isDocumentGrounded = true;
       parsed.documentSources = documentSummaryList.map(d => d.name);
       return parsed;
     }
+
+    // Secondary fallback: Extract fields from rawResult using regex if strict JSON parsing failed
+    console.warn('[MiniMax] Using regex field extraction fallback on raw LLM output...');
+    const extractStringField = (fieldName) => {
+      const match = rawResult.match(new RegExp(`"${fieldName}"\\s*:\\s*"([^"]+)"`, 'i'));
+      return match ? match[1].replace(/\\n/g, ' ').trim() : null;
+    };
+    const extractArrayField = (fieldName) => {
+      const match = rawResult.match(new RegExp(`"${fieldName}"\\s*:\\s*\\[([^\\]]+)\\]`, 'i'));
+      if (!match) return [];
+      return match[1]
+        .split(/",\s*"|",\s*\n\s*"/)
+        .map(s => s.replace(/^[\s"]+|[\s"]+$/g, '').replace(/\\n/g, ' ').trim())
+        .filter(Boolean);
+    };
+
+    const fitScoreMatch = rawResult.match(/"fitScore"\s*:\s*(\d+)/i);
+    const fitScore = fitScoreMatch ? parseInt(fitScoreMatch[1]) : 75;
+
     return {
-      fitScore: 80,
+      fitScore,
       isDocumentGrounded: true,
       documentSources: documentSummaryList.map(d => d.name),
-      summary: `Djupanalys baserad på ${documentSummaryList.length} uppladdade handlingar. Se extraherade krav och bilagor nedan.`,
-      requestedRoles: [
+      summary: extractStringField('summary') || `Djupanalys baserad på granskning av ${documentSummaryList.length} upphandlingshandlingar.`,
+      requestedRoles: parsed?.requestedRoles || [
         {
-          role: 'Konsult / Uppdragstagare',
-          requirements: 'Krav specificerade i förfrågningsunderlagets kravspecifikation.'
+          role: 'Uppdragstagare enligt kravspecifikationen',
+          requirements: 'Se extraherade skall-krav nedan.'
         }
       ],
-      estimatedValueOrBudget: notice.estimatedValue || 'Se ersättningsmodell i administrativa föreskrifter.',
-      projectDuration: 'Enligt avtalsutkast och AF-del.',
-      standardContractTerms: 'ABK 09 / Standardavtal enligt AF-del.',
-      requiredSubmissionDocuments: documentSummaryList.filter(d => /pris|svarsbilaga|cv/i.test(d.name)).map(d => d.name),
-      keyRequirements: ['Krav enligt uppladdad kravspecifikation'],
-      opportunities: ['Relevant uppdrag med tillgång till fullständiga handlingar'],
-      risksAndChallenges: ['Granska samtliga skall-krav och bilagor noggrant innan inlämning'],
-      recommendedBidStrategy: 'Följ svarsmallarna strikt och säkerställ fullständig överensstämmelse med skall-kraven.',
-      clarificationQuestions: ['Ställ frågor via upphandlingssystemet vid minsta oklarhet i underlaget.']
+      estimatedValueOrBudget: extractStringField('estimatedValueOrBudget') || notice.estimatedValue || 'Framgår ej i underlaget',
+      projectDuration: extractStringField('projectDuration') || 'Enligt administrativa föreskrifter och avtalsutkast',
+      standardContractTerms: extractStringField('standardContractTerms') || 'Standardavtal enligt uppladdade handlingar',
+      requiredSubmissionDocuments: extractArrayField('requiredSubmissionDocuments').length > 0
+        ? extractArrayField('requiredSubmissionDocuments')
+        : documentSummaryList.filter(d => /pris|svarsbilaga|cv|krav|espd/i.test(d.name)).map(d => d.name),
+      keyRequirements: extractArrayField('keyRequirements').length > 0
+        ? extractArrayField('keyRequirements')
+        : ['Skall-krav enligt uppladdade förfrågningshandlingar'],
+      opportunities: extractArrayField('opportunities').length > 0
+        ? extractArrayField('opportunities')
+        : ['God matchning mot företagets kompetensprofil utifrån underlaget'],
+      risksAndChallenges: extractArrayField('risksAndChallenges').length > 0
+        ? extractArrayField('risksAndChallenges')
+        : ['Säkerställ fullständig uppfyllelse av samtliga skall-krav innan anbudsinlämning'],
+      recommendedBidStrategy: extractStringField('recommendedBidStrategy') || 'Följ svarsmallarna noggrant och besvara samtliga skall-krav med tydliga bevis.',
+      clarificationQuestions: extractArrayField('clarificationQuestions').length > 0
+        ? extractArrayField('clarificationQuestions')
+        : ['Ställ frågor till upphandlaren under frågestunden vid eventuella oklarheter i handlingarna.']
     };
   } catch (error) {
     console.error('Document-based tender analysis failed:', error);
