@@ -76,7 +76,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Table Sorting state
-  const [sortField, setSortField] = useState<'id' | 'title' | 'buyer' | 'location' | 'publicationDate' | 'deadline'>('publicationDate');
+  const [sortField, setSortField] = useState<'id' | 'title' | 'buyer' | 'value' | 'location' | 'publicationDate' | 'deadline'>('publicationDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Modals
@@ -206,12 +206,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
     return savedTenders.some(t => t.notice_id === noticeId);
   };
 
-  const handleSortToggle = (field: 'id' | 'title' | 'buyer' | 'location' | 'publicationDate' | 'deadline') => {
+  const handleSortToggle = (field: 'id' | 'title' | 'buyer' | 'value' | 'location' | 'publicationDate' | 'deadline') => {
     if (sortField === field) {
       setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortDirection(field === 'publicationDate' || field === 'deadline' ? 'desc' : 'asc');
+      setSortDirection(field === 'publicationDate' || field === 'deadline' || field === 'value' ? 'desc' : 'asc');
     }
   };
 
@@ -233,6 +233,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
         case 'buyer':
           valA = (a.buyer || '').toLowerCase();
           valB = (b.buyer || '').toLowerCase();
+          break;
+        case 'value':
+          valA = a.estimatedValueAmount || 0;
+          valB = b.estimatedValueAmount || 0;
           break;
         case 'location':
           valA = `${a.city || ''} ${a.country || ''}`.trim().toLowerCase();
@@ -778,6 +782,20 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     <div className="flex items-center gap-1.5">
                       <span>Upphandlare</span>
                       {sortField === 'buyer' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
+                      )}
+                    </div>
+                  </th>
+
+                  <th
+                    onClick={() => handleSortToggle('value')}
+                    className="p-3.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Totalt arvode</span>
+                      {sortField === 'value' ? (
                         sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-ted-600" /> : <ArrowDown className="w-3.5 h-3.5 text-ted-600" />
                       ) : (
                         <ArrowUpDown className="w-3 h-3 opacity-40 hover:opacity-100" />
