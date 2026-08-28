@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Clock,
   Building,
+  Building2,
   MapPin,
   Calendar,
   Tag,
@@ -50,14 +51,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onWatchlistCreated
 }) => {
   // Search Filters state
-  const [keywords, setKeywords] = useState('');
-  const [countries, setCountries] = useState<string[]>(['SWE']);
-  const [allCountries, setAllCountries] = useState(false);
-  const [selectedCpvs, setSelectedCpvs] = useState<string[]>([]);
-  const [formType, setFormType] = useState<FormType>('competition');
-  const [datePreset, setDatePreset] = useState<DatePreset>('all');
-  const [onlyActive, setOnlyActive] = useState<boolean>(true);
-  const [rawQuery, setRawQuery] = useState('');
+  const [keywords, setKeywords] = useState(initialFilters?.keywords || '');
+  const [buyer, setBuyer] = useState(initialFilters?.buyer || '');
+  const [countries, setCountries] = useState<string[]>(initialFilters?.countries || ['SWE']);
+  const [allCountries, setAllCountries] = useState(Boolean(initialFilters?.allCountries));
+  const [selectedCpvs, setSelectedCpvs] = useState<string[]>(initialFilters?.cpv || []);
+  const [formType, setFormType] = useState<FormType>(initialFilters?.formType || 'competition');
+  const [datePreset, setDatePreset] = useState<DatePreset>(initialFilters?.datePreset || 'all');
+  const [onlyActive, setOnlyActive] = useState<boolean>(initialFilters?.onlyActive !== undefined ? initialFilters.onlyActive : true);
+  const [rawQuery, setRawQuery] = useState(initialFilters?.rawQuery || '');
   const [showExpertMode, setShowExpertMode] = useState(false);
 
   // AI Smart Search state
@@ -93,14 +95,37 @@ export const SearchView: React.FC<SearchViewProps> = ({
     { code: 'NLD', label: 'Nederländerna' }
   ];
 
-  // Initial load
+  const popularBuyers = [
+    { label: 'Trafikverket', value: 'Trafikverket', badge: 'Populär' },
+    { label: 'Region Stockholm', value: 'Region Stockholm' },
+    { label: 'Västfastigheter', value: 'Västfastigheter' },
+    { label: 'Svenska kraftnät', value: 'Svenska kraftnät' },
+    { label: 'Göteborgs Stad', value: 'Göteborgs Stad' },
+    { label: 'Försvarsmakten / FMV', value: 'Försvarsmakten' },
+    { label: 'Stockholm Vatten', value: 'Stockholm Vatten' },
+    { label: 'Specialfastigheter', value: 'Specialfastigheter' }
+  ];
+
+  // Initial load or when initialFilters change
   useEffect(() => {
+    if (initialFilters) {
+      if (initialFilters.keywords !== undefined) setKeywords(initialFilters.keywords);
+      if (initialFilters.buyer !== undefined) setBuyer(initialFilters.buyer);
+      if (initialFilters.countries) setCountries(initialFilters.countries);
+      if (initialFilters.allCountries !== undefined) setAllCountries(initialFilters.allCountries);
+      if (initialFilters.cpv) setSelectedCpvs(initialFilters.cpv);
+      if (initialFilters.formType) setFormType(initialFilters.formType);
+      if (initialFilters.datePreset) setDatePreset(initialFilters.datePreset);
+      if (initialFilters.onlyActive !== undefined) setOnlyActive(initialFilters.onlyActive);
+      if (initialFilters.rawQuery) setRawQuery(initialFilters.rawQuery);
+    }
     executeSearch(1);
   }, []);
 
   const getActiveFilters = (): NoticeFilters => {
     return {
       keywords: keywords.trim() || undefined,
+      buyer: buyer.trim() || undefined,
       countries: allCountries ? undefined : countries,
       allCountries,
       cpv: selectedCpvs.length > 0 ? selectedCpvs : undefined,
@@ -111,11 +136,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
     };
   };
 
-  const executeSearch = async (targetPage = 1) => {
+  const executeSearch = async (targetPage = 1, customFilters?: NoticeFilters) => {
     setLoading(true);
     setError(null);
     try {
-      const filters = getActiveFilters();
+      const filters = customFilters || getActiveFilters();
       const res = await api.searchTed(filters, targetPage, 20);
 
       if (res.success) {
@@ -146,8 +171,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
       const res = await api.smartSearch(smartPrompt);
       if (res.success && res.filters) {
         const f = res.filters;
-        if (f.keywords) setKeywords(f.keywords);
+        if (f.buyer !== undefined) setBuyer(f.buyer || '');
+        if (f.keywords !== undefined) setKeywords(f.keywords || '');
         if (f.cpv && f.cpv.length > 0) setSelectedCpvs(f.cpv);
+        else if (f.cpv && f.cpv.length === 0) setSelectedCpvs([]);
+        
         if (f.countries && f.countries.length > 0) {
           setCountries(f.countries);
           setAllCountries(false);
@@ -158,27 +186,31 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
         // Perform search with newly applied filters
         const searchFilters: NoticeFilters = {
-          keywords: f.keywords,
-          cpv: f.cpv,
+          buyer: f.buyer || undefined,
+          keywords: f.keywords || undefined,
+          cpv: f.cpv && f.cpv.length > 0 ? f.cpv : undefined,
           countries: f.countries,
           formType: f.formType,
           datePreset: f.datePreset,
           onlyActive
         };
-        const searchRes = await api.searchTed(searchFilters, 1, 20);
-        if (searchRes.success) {
-          setNotices(searchRes.notices || []);
-          setTotalCount(searchRes.totalCount || 0);
-          setPage(1);
-          setTotalPages(searchRes.totalPages || 1);
-          setGeneratedQuery(searchRes.query || '');
-        }
+        await executeSearch(1, searchFilters);
       }
     } catch (err: any) {
       setError(`MiniMax Smart Search fel: ${err.message}`);
     } finally {
       setSmartSearching(false);
     }
+  };
+
+  const handleSelectBuyerChip = (bVal: string) => {
+    const newBuyer = buyer === bVal ? '' : bVal;
+    setBuyer(newBuyer);
+    const updatedFilters = {
+      ...getActiveFilters(),
+      buyer: newBuyer || undefined
+    };
+    executeSearch(1, updatedFilters);
   };
 
   const handleCountryToggle = (code: string) => {
@@ -293,7 +325,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
-              {['Tendium', 'Kommers', 'e-Avrop', 'Mercell/Opic', 'Visma', 'TED Feed'].map((name) => (
+              {['Magnit', 'TendSign', 'Kommers', 'e-Avrop', 'Mercell/Opic', 'TED Feed'].map((name) => (
                 <div key={name} className="px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate shadow-2xs">
                   {name}
                 </div>
@@ -376,7 +408,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
 
         {/* Filter Inputs Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {/* Keyword Search */}
           <div className="space-y-1">
             <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fritext / Sökord / ID</label>
@@ -389,6 +421,37 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 onKeyDown={(e) => e.key === 'Enter' && executeSearch(1)}
                 placeholder="t.ex. CAD/BIM, 489981-2026, konsult..."
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
+              />
+            </div>
+          </div>
+
+          {/* Buyer / Contracting Authority Search */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Upphandlande organisation</label>
+              {buyer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuyer('');
+                    const updatedFilters = { ...getActiveFilters(), buyer: undefined };
+                    executeSearch(1, updatedFilters);
+                  }}
+                  className="text-[10px] text-red-500 hover:text-red-600 font-semibold"
+                >
+                  Rensa
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={buyer}
+                onChange={(e) => setBuyer(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && executeSearch(1)}
+                placeholder="t.ex. Trafikverket, Region Stockholm..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500 font-medium"
               />
             </div>
           </div>
@@ -440,6 +503,39 @@ export const SearchView: React.FC<SearchViewProps> = ({
               <option value="365d">Senaste året</option>
             </select>
           </div>
+        </div>
+
+        {/* Popular Buyers Shortcut Bar */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
+            <Building className="w-3 h-3 text-slate-400" />
+            Populära beställare:
+          </span>
+          {popularBuyers.map((pb) => {
+            const isSelected = buyer.toLowerCase() === pb.value.toLowerCase();
+            return (
+              <button
+                type="button"
+                key={pb.value}
+                onClick={() => handleSelectBuyerChip(pb.value)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-[#F1503C] text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700/60'
+                }`}
+              >
+                <span>{pb.label}</span>
+                {pb.badge && !isSelected && (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-red-100 text-[#F1503C] dark:bg-red-950/60 dark:text-red-300 font-bold uppercase">
+                    {pb.badge}
+                  </span>
+                )}
+                {isSelected && (
+                  <span className="text-[10px] ml-0.5 opacity-80">✕</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Country Selector Pills & Action Bar */}

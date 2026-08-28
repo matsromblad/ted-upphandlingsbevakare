@@ -3,6 +3,7 @@ import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
+import { searchMagnitNotices, getMagnitNoticeById } from '../services/magnitService.js';
 import { naturalLanguageToFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant } from '../services/minimaxService.js';
 import { parseUploadedProcurementFiles } from '../services/documentParserService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
@@ -131,8 +132,63 @@ router.post('/auth/signup', async (req, res) => {
 router.post('/ted/search', async (req, res) => {
   try {
     const { filters = {}, page = 1, limit = 20 } = req.body;
-    const results = await searchTedNotices(filters, { page, limit });
-    res.json(results);
+    
+    // Check if query is a direct publication number search
+    const kw = (typeof filters.keywords === 'string' ? filters.keywords : '').trim();
+    const isDirectMagnit = kw.toLowerCase().startsWith('magnit-') || (filters.rawQuery && filters.rawQuery.toLowerCase().includes('magnit'));
+
+    if (isDirectMagnit) {
+      const cleanId = kw.replace(/^magnit-/i, '');
+      const magnitNotice = await getMagnitNoticeById(cleanId);
+      return res.json({
+        success: true,
+        query: `publication-number = ${kw}`,
+        totalCount: magnitNotice ? 1 : 0,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        notices: magnitNotice ? [magnitNotice] : []
+      });
+    }
+
+    // Execute both TED search and Magnit search in parallel
+    const [tedResult, magnitResult] = await Promise.allSettled([
+      searchTedNotices(filters, { page, limit: 100 }),
+      searchMagnitNotices(filters)
+    ]);
+
+    const tedSuccess = tedResult.status === 'fulfilled' && tedResult.value.success;
+    const magnitSuccess = magnitResult.status === 'fulfilled' && magnitResult.value.success;
+
+    const tedNotices = tedSuccess ? (tedResult.value.notices || []) : [];
+    const magnitNotices = magnitSuccess ? (magnitResult.value.notices || []) : [];
+
+    // Merge notices
+    const allNotices = [...tedNotices, ...magnitNotices];
+
+    // Sort combined notices by publicationDate DESC
+    allNotices.sort((a, b) => {
+      const dateA = a.publicationDate || '';
+      const dateB = b.publicationDate || '';
+      return dateB.localeCompare(dateA);
+    });
+
+    const targetPage = Math.max(1, parseInt(page) || 1);
+    const targetLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const totalCount = (tedSuccess ? (tedResult.value.totalCount || 0) : 0) + (magnitSuccess ? (magnitResult.value.totalCount || 0) : 0);
+
+    const startIndex = (targetPage - 1) * targetLimit;
+    const paginatedNotices = allNotices.slice(startIndex, startIndex + targetLimit);
+
+    res.json({
+      success: true,
+      query: tedSuccess ? tedResult.value.query : '',
+      totalCount,
+      page: targetPage,
+      limit: targetLimit,
+      totalPages: Math.ceil(totalCount / targetLimit) || 1,
+      notices: paginatedNotices.length > 0 ? paginatedNotices : allNotices.slice(0, targetLimit)
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -140,7 +196,18 @@ router.post('/ted/search', async (req, res) => {
 
 router.get('/ted/notice/:id', async (req, res) => {
   try {
-    const notice = await getNoticeById(req.params.id);
+    const id = req.params.id;
+    let notice = null;
+
+    if (id.toLowerCase().startsWith('magnit-')) {
+      notice = await getMagnitNoticeById(id);
+    } else {
+      notice = await getNoticeById(id);
+      if (!notice) {
+        notice = await getMagnitNoticeById(id);
+      }
+    }
+
     if (!notice) {
       return res.status(404).json({ success: false, error: 'Upphandlingen hittades inte' });
     }

@@ -71,6 +71,11 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
       replacementReason: 'Enkelt modernt gränssnitt, direkt export till Excel/JSON och integrerad Kanban-pipeline.'
     },
     {
+      name: 'Magnit Source / Mäklarportaler',
+      description: 'Slutet VMS- och konsultmäklarsystem för direktavrop och resursförfrågningar.',
+      replacementReason: 'Integrerad realtidssökning som fångar uppdrag från Trafikförvaltningen, Vattenfall, Stockholm Exergi, Swedavia m.fl.'
+    },
+    {
       name: 'Upphandling24 (U24)',
       description: 'Nyhets- och bevakningstjänst för offentlig sektor.',
       replacementReason: 'Djupare sökbarhet med TED Expert Query, CPV-hierarkier och AI-driven skall-kravsanalys.'
@@ -126,6 +131,10 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
     {
       question: 'Kan jag exportera träffar och bevakningar?',
       answer: 'Ja! Du kan exportera både sökresultat och träffar från bevakningslistor till Microsoft Excel (.xlsx), CSV eller JSON för vidare analys och presentation.'
+    },
+    {
+      question: 'Finns upphandlingar från Trafikverket och andra statliga myndigheter i appen?',
+      answer: 'Ja! Trafikverket (registrerat som "Trafikverket Myndighet" i TED), Svenska kraftnät, Region Stockholm, Trafikförvaltningen (SL), Västfastigheter m.fl. kungör alla sina upphandlingar över tröskelvärdena i TED. Du kan enkelt söka fram dem genom att skriva myndighetens namn i fältet "Upphandlande organisation", klicka på snabbvalsknapparna under sökfiltren eller använda MiniMax Smart Sök. Observera att mindre direktupphandlingar under tröskelvärdet samt enskilda avrop inom etablerade DIS (Dynamiska Inköpssystem) hanteras direkt i beställarens leverantörsportal (t.ex. Kommers Annons/CTM), medan inrättandet av DIS-systemen finns i TED.'
     },
     {
       question: 'Hur kontaktar jag skaparen eller rapporterar önskemål?',

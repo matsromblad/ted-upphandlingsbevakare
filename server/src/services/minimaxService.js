@@ -142,20 +142,24 @@ export async function naturalLanguageToFilters(userPrompt) {
   const systemPrompt = `Du är en expert på offentlig upphandling i Sverige och EU samt TED (Tenders Electronic Daily).
 Ditt uppdrag är att omvandla användarens sökfras eller beskrivning till strukturerade sökfilter och CPV-koder.
 
-VIKTIGT OM NYCKELORD OCH LOGIK:
-- Fältet "keywords" ska innehålla relevanta sökord och synonymer. Om flera alternativa synonymer finns, separera dem med " OR " (t.ex. "BIM OR BIM-samordning OR 3D-modellering" eller "cybersäkerhet OR IT-säkerhet").
-- Om sökningen berör BIM/bygg/teknik/arkitektur, välj relevanta CPV-koder från division 71 (t.ex. 71300000, 71240000, 71320000, 71541000) och division 72 (t.ex. 72224000).
+VIKTIGT OM NYCKELORD, KÖPARE OCH LOGIK:
+- Om användaren nämner en specifik upphandlande organisation eller myndighet (t.ex. "Trafikverket", "Region Stockholm", "Västfastigheter", "Svenska kraftnät", "Försvarsmakten", "FMV", "Göteborgs stad", "Stockholm Vatten", "Specialfastigheter"), ska du ALLTID sätta fältet "buyer" till detta organisationsnamn (t.ex. "Trafikverket" eller "Region Stockholm").
+- Sätt ALDRIG en upphandlares namn i "titleKeyword"! I TED eForms-standard inleds titlar ofta med "Sverige – Konsulttjänster..." och upphandlarens namn finns i fältet för organisation/köpare, inte i titeln. Att sätta organisationen i titleKeyword resulterar i 0 träffar!
+- "titleKeyword" ska ENDAST användas om användaren uttryckligen ber om ett ord som MÅSTE stå i titeln (t.ex. "upphandlingar med 'ramavtal' i rubriken"). Lämna annars "titleKeyword" tomt ("").
+- Fältet "keywords" ska innehålla relevanta verksamhetsrelaterade sökord (t.ex. "bro", "vägplan", "BIM", "projektering", "miljökonsekvensbeskrivning") separerade med " OR ". Om användaren enbart frågar efter en viss myndighet (t.ex. "Trafikverket" eller "alla upphandlingar från Trafikverket"), lämna "keywords" tomt ("") eller begränsa inte med för snäva ord.
+- Om sökningen berör BIM/bygg/teknik/arkitektur/samhällsbyggnad, välj relevanta CPV-koder från division 71 (t.ex. 71300000, 71240000, 71320000, 71541000) och/eller 45. Om användaren enbart söker efter en myndighet utan specifik bransch, lämna "cpv" som tom array [].
 - Om sökningen berör IT/mjukvara, välj koder från division 72 eller 48.
 
 Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodblock, endast ren JSON):
 {
-  "keywords": "relevanta nyckelord separerade med OR (t.ex. 'BIM OR BIM-samordning OR 3D-modellering')",
-  "titleKeyword": "valfritt specifikt ord i titeln eller tom sträng",
-  "cpv": ["8-siffriga CPV-koder relevanta för området, t.ex. '71300000', '71240000'"],
+  "buyer": "namn på upphandlande myndighet eller organisation, t.ex. 'Trafikverket' eller tom sträng om inte specificerad",
+  "keywords": "relevanta verksamhetssökord separerade med OR (eller tom sträng '')",
+  "titleKeyword": "valfritt specifikt ord i titeln eller tom sträng ''",
+  "cpv": ["8-siffriga CPV-koder relevanta för området, t.ex. '71300000', '71240000' eller tom array []"],
   "countries": ["landskoder i ISO-3, t.ex. 'SWE', 'DNK', 'NOR'"],
   "formType": "competition | planning | result | ALL",
-  "datePreset": "1d | 7d | 14d | 30d | 90d | 365d",
-  "explanation": "Kort förklaring på svenska av hur du tolkade sökningen och vilka CPV-koder du valde.",
+  "datePreset": "1d | 7d | 14d | 30d | 90d | 365d | all",
+  "explanation": "Kort förklaring på svenska av hur du tolkade sökningen och vilka filter/köpare du valde.",
   "suggestedWatchlistName": "Förslag på ett snyggt namn om användaren vill spara som bevakning"
 }`;
 
@@ -169,26 +173,30 @@ Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodb
     if (parsed) {
       return parsed;
     }
+    const isTrafikverket = /trafikverket/i.test(userPrompt);
     const isBim = /bim|vdc|modellering|cad|projektering|samordning/i.test(userPrompt);
     return {
-      keywords: userPrompt,
-      cpv: isBim ? ['71300000', '71240000', '71320000'] : ['71300000'],
+      buyer: isTrafikverket ? 'Trafikverket' : '',
+      keywords: isTrafikverket && !isBim ? '' : userPrompt,
+      cpv: isBim ? ['71300000', '71240000', '71320000'] : [],
       countries: ['SWE'],
       formType: 'competition',
-      datePreset: '30d',
-      explanation: 'Sökfilter skapade baserat på din sökning.',
+      datePreset: 'all',
+      explanation: isTrafikverket ? 'Filtrerar på upphandlingar från Trafikverket.' : 'Sökfilter skapade baserat på din sökning.',
       suggestedWatchlistName: userPrompt.slice(0, 30)
     };
   } catch (e) {
     console.error('Failed to parse natural language query with MiniMax:', e);
+    const isTrafikverket = /trafikverket/i.test(userPrompt);
     const isBim = /bim|vdc|modellering|cad|projektering|samordning/i.test(userPrompt);
     return {
-      keywords: userPrompt,
-      cpv: isBim ? ['71300000', '71240000', '71320000'] : ['71300000'],
+      buyer: isTrafikverket ? 'Trafikverket' : '',
+      keywords: isTrafikverket && !isBim ? '' : userPrompt,
+      cpv: isBim ? ['71300000', '71240000', '71320000'] : [],
       countries: ['SWE'],
       formType: 'competition',
-      datePreset: '30d',
-      explanation: 'Sökning med direkt fritext.',
+      datePreset: 'all',
+      explanation: 'Sökning med direkt filter.',
       suggestedWatchlistName: userPrompt.slice(0, 30)
     };
   }

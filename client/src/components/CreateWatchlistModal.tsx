@@ -133,6 +133,9 @@ export const CreateWatchlistModal: React.FC<CreateWatchlistModalProps> = ({
           {/* Active filter summary preview */}
           <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 space-y-1 text-xs text-slate-600 dark:text-slate-400">
             <span className="font-semibold text-slate-900 dark:text-slate-200">Aktiva filterkriterier:</span>
+            {filters.buyer && (
+              <p>• Upphandlare / Organisation: <span className="text-[#F1503C] dark:text-red-400 font-bold">{filters.buyer}</span></p>
+            )}
             <p>• Sökord: <span className="text-slate-900 dark:text-white font-medium">{filters.keywords || 'Alla'}</span></p>
             <p>• Länder: <span className="text-slate-900 dark:text-white font-medium">{filters.countries?.join(', ') || 'SWE'}</span></p>
             <p>• CPV: <span className="text-slate-900 dark:text-white font-medium">{filters.cpv?.length ? `${filters.cpv.length} koder valda` : 'Alla koder'}</span></p>
