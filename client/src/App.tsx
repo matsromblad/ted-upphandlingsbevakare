@@ -12,7 +12,8 @@ import { AboutView } from './views/AboutView';
 import { Notice, SavedTender } from './types';
 import { api } from './api';
 import { supabase, isSupabaseConfigured, subscribeSupabaseConfig, ensureSupabaseClient } from './supabaseClient';
-import { Building2, ExternalLink, Code2, Heart, Info, Sparkles } from 'lucide-react';
+import { ExternalLink, Code2, Heart, Info, Sparkles } from 'lucide-react';
+import { WspLogo } from './components/WspLogo';
 
 function getInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
@@ -188,12 +189,10 @@ export const App: React.FC = () => {
       {/* Global Footer */}
       <footer className="mt-12 border-t border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm transition-colors">
         <div className="max-w-[1920px] mx-auto px-3 sm:px-5 lg:px-7 xl:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white font-bold text-[10px]">
-              TED
-            </div>
+          <div className="flex items-center gap-2.5">
+            <WspLogo variant="icon" size="sm" />
             <span>
-              <strong>TED Upphandlingsbevakare</strong> • Skapad av <strong>Mats Romblad</strong> (<a href="mailto:mats.romblad@wsp.com" className="text-ted-600 dark:text-ted-400 hover:underline">mats.romblad@wsp.com</a>)
+              <strong className="text-slate-800 dark:text-slate-200">WSP TED Bevakare</strong> • Utvecklad inom <strong>WSP Sverige</strong> av <strong>Mats Romblad</strong> (<a href="mailto:mats.romblad@wsp.com" className="text-wsp-500 hover:underline font-medium">mats.romblad@wsp.com</a>)
             </span>
           </div>
 
@@ -202,8 +201,8 @@ export const App: React.FC = () => {
               onClick={() => setIsAboutModalOpen(true)}
               className="hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1 font-medium"
             >
-              <Info className="w-3.5 h-3.5 text-ted-600 dark:text-ted-400" />
-              Om appen
+              <Info className="w-3.5 h-3.5 text-wsp-500" />
+              Om WSP TED Bevakare
             </button>
 
             <a

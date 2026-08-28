@@ -261,36 +261,36 @@ export const SearchView: React.FC<SearchViewProps> = ({
     <div className="space-y-6 pb-12">
       
       {/* Top Coverage & Overview Card */}
-      <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 text-white p-6 sm:p-7 shadow-xl border border-indigo-900/30 relative overflow-hidden">
-        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -top-20 w-80 h-80 bg-ted-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="rounded-3xl bg-white dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 p-6 sm:p-7 shadow-sm border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-red-500/5 dark:bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -top-20 w-80 h-80 bg-slate-500/5 dark:bg-slate-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
           <div className="lg:col-span-6 space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
               Hitta rätt upphandlingar i EU & Sverige
             </h1>
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               Direktåtkomst till EU:s officiella databas TED (Tenders Electronic Daily). Bevaka, analysera och vinn offentliga kontrakt.
             </p>
           </div>
 
-          <div className="lg:col-span-6 bg-white/5 dark:bg-slate-900/60 backdrop-blur-md rounded-2xl p-4 border border-white/10 space-y-2.5">
+          <div className="lg:col-span-6 bg-slate-50 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl p-4 border border-slate-200 dark:border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-purple-300" />
-                <span className="text-xs font-bold uppercase tracking-wider text-purple-200">
+                <Layers className="w-4 h-4 text-slate-700 dark:text-purple-300" />
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-purple-200">
                   Ersätter & Konsoliderar
                 </span>
               </div>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                 Allt-i-ett
               </span>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
               {['Tendium', 'Kommers', 'e-Avrop', 'Mercell/Opic', 'Visma', 'TED Feed'].map((name) => (
-                <div key={name} className="px-2 py-1.5 rounded-lg bg-white/10 border border-white/10 text-[11px] font-semibold text-slate-200 truncate">
+                <div key={name} className="px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate shadow-2xs">
                   {name}
                 </div>
               ))}
@@ -300,32 +300,32 @@ export const SearchView: React.FC<SearchViewProps> = ({
       </div>
 
       {/* MiniMax Natural Language Smart Search Row */}
-      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 text-white p-5 sm:p-6 shadow-xl border border-indigo-800/50 relative overflow-hidden space-y-3">
+      <div className="rounded-3xl bg-gradient-to-r from-red-50/60 via-purple-50/50 to-white dark:from-slate-900 dark:via-slate-900 dark:to-purple-950/60 p-5 sm:p-6 shadow-sm border border-red-100 dark:border-purple-900/40 relative overflow-hidden space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-200 text-xs font-semibold backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800/60 text-purple-800 dark:text-purple-200 text-xs font-bold backdrop-blur-md">
+            <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-300" />
             <span>MiniMax-M3 Smart Sök</span>
           </div>
-          <span className="text-xs text-slate-300">
+          <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">
             Beskriv vad du letar efter med egna ord – MiniMax matchar automatiskt CPV-koder och TED-sökfilter
           </span>
         </div>
 
         <form onSubmit={handleSmartSearch} className="flex flex-col sm:flex-row gap-2.5">
           <div className="relative flex-1">
-            <Sparkles className="w-4 h-4 text-purple-400 absolute left-4 top-3.5" />
+            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 absolute left-4 top-3.5" />
             <input
               type="text"
               value={smartPrompt}
               onChange={(e) => setSmartPrompt(e.target.value)}
               placeholder="t.ex. Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige..."
-              className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/10 dark:bg-slate-900/60 border border-white/20 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-md"
+              className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-xs"
             />
           </div>
           <button
             type="submit"
             disabled={!smartPrompt.trim() || smartSearching}
-            className="px-7 py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-sm shadow-lg shadow-purple-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
+            className="px-7 py-3 rounded-2xl bg-[#F1503C] hover:bg-[#dc2626] text-white font-bold text-sm shadow-md shadow-[#F1503C]/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
           >
             {smartSearching ? (
               <>
@@ -343,10 +343,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
         {/* AI Explanation Pill */}
         {smartExplanation && (
-          <div className="p-3.5 rounded-xl bg-purple-900/50 border border-purple-500/30 text-xs text-purple-200 flex items-start gap-2 animate-fadeIn">
-            <CheckCircle className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-xl bg-purple-100/70 dark:bg-purple-900/50 border border-purple-200 dark:border-purple-700/50 text-xs text-purple-900 dark:text-purple-200 flex items-start gap-2 animate-fadeIn">
+            <CheckCircle className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-white">AI-tolkning:</span> {smartExplanation}
+              <span className="font-bold text-slate-900 dark:text-white">AI-tolkning:</span> {smartExplanation}
             </div>
           </div>
         )}

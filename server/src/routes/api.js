@@ -51,7 +51,7 @@ function renderUnsubscribeHtml(title, message, manageUrl = '') {
       </head>
       <body style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
         <div style="max-width:640px;margin:48px auto;background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:32px;">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#b45309;">TED Upphandlingsbevakare</div>
+          <div style="font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#F1503C;">WSP TED Bevakare</div>
           <h1 style="margin:12px 0 10px;font-size:28px;">${escapeHtml(title)}</h1>
           <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;">${escapeHtml(message)}</p>
           ${manageLink}

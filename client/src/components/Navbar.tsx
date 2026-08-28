@@ -7,13 +7,13 @@ import {
   Sparkles,
   Sun,
   Moon,
-  Building2,
   User,
   LogOut,
   LogIn,
   ChevronDown,
   Info
 } from 'lucide-react';
+import { WspLogo } from './WspLogo';
 import { signOut, isSupabaseConfigured } from '../supabaseClient';
 
 interface NavbarProps {
@@ -60,25 +60,10 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center justify-between min-h-[4rem] h-16 sm:h-18 gap-2 sm:gap-4">
           {/* Logo & Brand */}
           <div
-            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer flex-shrink-0 select-none py-1"
+            className="cursor-pointer flex-shrink-0 select-none py-1"
             onClick={() => onSelectView('search')}
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white shadow-md shadow-ted-500/20 flex-shrink-0">
-              <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
-            </div>
-            <div className="flex flex-col justify-center min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
-                <span className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight leading-tight">
-                  TED Bevakare
-                </span>
-                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-ted-100 text-ted-800 dark:bg-ted-950 dark:text-ted-300 border border-ted-200 dark:border-ted-800 leading-none flex-shrink-0">
-                  EU & Sverige
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap leading-tight mt-0.5 hidden sm:block">
-                Tenders Electronic Daily Monitor
-              </p>
-            </div>
+            <WspLogo variant="full" size="md" />
           </div>
 
           {/* Navigation Links */}
@@ -211,7 +196,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                     >
                       <Info className="w-3.5 h-3.5 text-slate-400" />
-                      Om TED Bevakare
+                      Om WSP TED Bevakare
                     </button>
 
                     <button

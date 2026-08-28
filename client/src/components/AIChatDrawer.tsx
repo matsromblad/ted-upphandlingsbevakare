@@ -239,10 +239,10 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
                     ) : (
                       <ReactMarkdown
                         components={{
-                          h1: ({node, ...props}) => <h1 className="text-base font-bold my-2" {...props} />,
-                          h2: ({node, ...props}) => <h2 className="text-sm font-bold my-2" {...props} />,
+                          h1: ({node, ...props}) => <h1 className="text-base font-bold my-2 text-slate-900 dark:text-white" {...props} />,
+                          h2: ({node, ...props}) => <h2 className="text-sm font-bold my-2 text-slate-900 dark:text-white" {...props} />,
                           h3: ({node, ...props}) => <h3 className="text-xs font-bold my-1 text-purple-600 dark:text-purple-400" {...props} />,
-                          p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                          p: ({node, ...props}) => <p className="mb-2 last:mb-0 text-slate-800 dark:text-slate-200" {...props} />,
                           ul: ({node, ...props}) => <ul className="list-disc pl-4 space-y-1 mb-2" {...props} />,
                           ol: ({node, ...props}) => <ol className="list-decimal pl-4 space-y-1 mb-2" {...props} />,
                           li: ({node, ...props}) => <li className="text-xs" {...props} />,

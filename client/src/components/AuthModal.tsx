@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Building2, Lock, Mail, User, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { X, Lock, Mail, User, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
+import { WspLogo } from './WspLogo';
 import {
   signInWithGoogle,
   signInWithGithub,
@@ -101,15 +102,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-ted-500 to-blue-700 flex items-center justify-center text-white shadow-md shadow-ted-500/20">
-              <Building2 className="w-5 h-5" />
-            </div>
+            <WspLogo size="md" variant="icon" />
             <div>
               <h3 className="font-bold text-lg text-slate-900 dark:text-white">
                 {isSignUp ? 'Skapa konto' : 'Logga in'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                TED Upphandlingsbevakare
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                <span className="text-[#F1503C] font-bold">WSP</span> TED Bevakare
               </p>
             </div>
           </div>

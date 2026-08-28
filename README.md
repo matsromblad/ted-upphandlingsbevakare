@@ -1,11 +1,12 @@
-# TED Upphandlingsbevakare (Tenders Electronic Daily Monitor)
+# WSP TED Bevakare (Tenders Electronic Daily Monitor)
 
-En fullstack-applikation för att söka, bevaka och analysera offentliga upphandlingar från **EU:s officiella databas TED (Tenders Electronic Daily)**, förstärkt med **MiniMax-M3 LLM** och **Supabase** för fleranvändarstöd och Single Sign-On (SSO).
+En fullstack-applikation framtagen för och av **WSP** för att söka, bevaka och analysera offentliga upphandlingar från **EU:s officiella databas TED (Tenders Electronic Daily)**, förstärkt med **MiniMax-M3 LLM** och **Supabase** för fleranvändarstöd och Single Sign-On (SSO).
 
+![WSP](https://img.shields.io/badge/WSP-Sverige-red)
 ![TED Bevakare](https://img.shields.io/badge/TED-EU%20Procurement-blue)
 ![AI](https://img.shields.io/badge/AI-MiniMax--M3-purple)
 ![Supabase](https://img.shields.io/badge/Database-Supabase%20Postgres%20%2B%20Auth-emerald)
-![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite%20%2B%20Tailwind-blue)
+![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite%20%2B%20Tailwind-red)
 ![Node.js](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-green)
 
 ---

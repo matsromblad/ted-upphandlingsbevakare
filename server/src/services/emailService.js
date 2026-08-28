@@ -3,7 +3,7 @@ import { hitsDao, profileDao, watchlistDao } from '../db.js';
 const MAILTRAP_API_URL = process.env.MAILTRAP_API_URL || 'https://send.api.mailtrap.io/api/send';
 const MAILTRAP_API_TOKEN = process.env.MAILTRAP_API_TOKEN || '';
 const MAILTRAP_FROM_EMAIL = process.env.MAILTRAP_FROM_EMAIL || '';
-const MAILTRAP_FROM_NAME = process.env.MAILTRAP_FROM_NAME || 'TED Upphandlingsbevakare';
+const MAILTRAP_FROM_NAME = process.env.MAILTRAP_FROM_NAME || 'WSP TED Bevakare';
 const MAILTRAP_CATEGORY = process.env.MAILTRAP_CATEGORY || 'Watchlist Digest';
 
 const digestCadenceMs = {
@@ -166,8 +166,8 @@ function buildDigestHtml(recipientName, watchlist, notices) {
     <div style="margin: 0; padding: 32px 16px; background: #f8fafc; font-family: Arial, sans-serif; color: #0f172a;">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 760px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; border: 1px solid #e2e8f0;">
         <tr>
-          <td style="padding: 32px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #ffffff;">
-            <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.9;">TED Upphandlingsbevakare</div>
+          <td style="padding: 32px; background: linear-gradient(135deg, #F1503C, #b91c1c); color: #ffffff;">
+            <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.95;">WSP TED Bevakare</div>
             <h1 style="margin: 12px 0 8px; font-size: 28px; line-height: 1.2;">${escapeHtml(watchlist.name)}</h1>
             <p style="margin: 0; font-size: 16px; line-height: 1.6;">
               Hej ${escapeHtml(recipientName || 'dar')}! Din ${escapeHtml(cadenceLabel.toLowerCase())} sammanfattning innehaller ${notices.length} relevanta upphandlingar.
