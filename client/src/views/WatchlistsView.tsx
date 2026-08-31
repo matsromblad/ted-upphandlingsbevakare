@@ -8,18 +8,13 @@ import {
   Loader2,
   Eye,
   CheckCheck,
-  AlertCircle,
-  Coins,
-  Globe2,
-  ExternalLink,
-  Bookmark,
-  Check
+  AlertCircle
 } from 'lucide-react';
 import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
-import { getDeadlineInfo } from '../utils/dateUtils';
-import { DeadlineBadge } from '../components/DeadlineBadge';
+import { showToast } from '../components/Toast';
+import { NoticeCard } from '../components/NoticeCard';
 
 interface WatchlistsViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -174,10 +169,15 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   const handleSaveToPipeline = async (notice: Notice, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await api.saveToPipeline(notice);
-      onTenderSaved();
-    } catch (err) {
+      const res = await api.saveToPipeline(notice);
+      if (res.success) {
+        onTenderSaved();
+      } else {
+        showToast('error', res.error || 'Kunde inte spara upphandlingen till pipeline.');
+      }
+    } catch (err: any) {
       console.error('Failed to save to pipeline:', err);
+      showToast('error', err?.message || 'Kunde inte spara upphandlingen till pipeline.');
     }
   };
 
@@ -319,111 +319,36 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
               {filteredHits.map((hit) => {
                 const notice = hit.notice;
                 if (!notice) return null;
                 const isUnread = !hit.is_read;
-                const isSaved = isTenderSaved(notice.id);
-                const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
 
                 return (
-                  <div
+                  <NoticeCard
                     key={hit.id}
-                    onClick={() => {
+                    notice={notice}
+                    isSaved={isTenderSaved(notice.id)}
+                    onSave={handleSaveToPipeline}
+                    isUnread={isUnread}
+                    onOpenDetail={() => {
                       if (isUnread) handleMarkHitRead(hit.id);
                       onOpenNoticeDetail(notice);
                     }}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
-                      dlInfo.isExpired
-                        ? 'border-red-300 dark:border-red-800/80 bg-red-50/20 dark:bg-red-950/15 hover:border-red-400 ring-1 ring-red-400/20'
-                        : isUnread
-                        ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800 shadow-sm'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    extraBadges={
+                      <>
                         {isUnread && (
                           <span className="px-2 py-0.5 rounded-md font-extrabold bg-amber-500 text-white uppercase text-[10px] tracking-wider">
                             NY
                           </span>
                         )}
-                        <span className="font-semibold text-amber-700 dark:text-amber-400">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
                           {hit.watchlist_name}
                         </span>
-                        <span className="text-slate-400">•</span>
-                        <span className="font-mono text-slate-500">{notice.publicationNumber}</span>
-                        {notice.portalName && (
-                          <>
-                            <span className="text-slate-400">•</span>
-                            <span className="font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-0.5">
-                              <Globe2 className="w-3 h-3" /> {notice.portalName}
-                            </span>
-                          </>
-                        )}
-                        {notice.estimatedValueFormatted && (
-                          <>
-                            <span className="text-slate-400">•</span>
-                            <span className="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-0.5" title={notice.estimatedValue}>
-                              <Coins className="w-3 h-3" /> {notice.estimatedValueFormatted}
-                            </span>
-                          </>
-                        )}
-                        {dlInfo.hasDeadline && (
-                          <DeadlineBadge
-                            info={dlInfo}
-                            variant="text"
-                            icon={dlInfo.isExpired ? 'alert-triangle' : 'none'}
-                            label={dlInfo.isExpired ? undefined : `Deadline: ${dlInfo.formattedDeadline}`}
-                            className="font-semibold"
-                          />
-                        )}
-                      </div>
-
-                      <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
-                        {notice.title}
-                      </h4>
-
-                      <div className="flex items-center gap-3 text-xs text-slate-500">
-                        <span className="truncate">{notice.buyer}</span>
-                        {notice.city && <span>({notice.city})</span>}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      {(notice.links?.submission || notice.links?.documents) && (
-                        <a
-                          href={notice.links?.submission || notice.links?.documents}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center gap-1"
-                          title={notice.portalName ? `Öppna ${notice.portalName}` : 'Öppna anbudslänk'}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          <span>{notice.portalName || 'Anbud'}</span>
-                        </a>
-                      )}
-                      <button
-                        onClick={(e) => handleSaveToPipeline(notice, e)}
-                        className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                          isSaved
-                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 shadow-sm'
-                            : 'border-slate-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 text-slate-700 dark:text-slate-300 hover:text-emerald-700'
-                        }`}
-                        title={isSaved ? 'Sparad i anbudspipelinen' : 'Spara till anbudspipelinen'}
-                      >
-                        <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-emerald-600 text-emerald-600' : ''}`} />
-                        <span>{isSaved ? 'Sparad' : 'Spara'}</span>
-                      </button>
-                      <button
-                        onClick={() => onOpenNoticeDetail(notice)}
-                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold"
-                      >
-                        Granska
-                      </button>
-                    </div>
-                  </div>
+                      </>
+                    }
+                  />
                 );
               })}
             </div>

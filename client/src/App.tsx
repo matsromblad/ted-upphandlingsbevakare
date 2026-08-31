@@ -14,6 +14,7 @@ import { api } from './api';
 import { supabase, isSupabaseConfigured, subscribeSupabaseConfig, ensureSupabaseClient } from './supabaseClient';
 import { ExternalLink, Code2, Heart, Info, Sparkles } from 'lucide-react';
 import { WspLogo } from './components/WspLogo';
+import { ToastContainer } from './components/Toast';
 
 function getInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
@@ -260,6 +261,8 @@ export const App: React.FC = () => {
           loadPipelineAndWatchlists();
         }}
       />
+
+      <ToastContainer />
     </div>
   );
 };

@@ -9,7 +9,6 @@ import {
   Clock,
   Building,
   Building2,
-  MapPin,
   Calendar,
   Tag,
   Grid,
@@ -27,7 +26,8 @@ import {
   ArrowUp,
   ArrowDown,
   Coins,
-  Globe2
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { Notice, NoticeFilters, FormType, DatePreset, SavedTender } from '../types';
 import { api } from '../api';
@@ -35,6 +35,8 @@ import { CpvSelectorModal } from '../components/CpvSelectorModal';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
 import { getDeadlineInfo } from '../utils/dateUtils';
 import { DeadlineBadge } from '../components/DeadlineBadge';
+import { showToast } from '../components/Toast';
+import { NoticeCard } from '../components/NoticeCard';
 
 interface SearchViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -53,6 +55,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 }) => {
   // Search Filters state
   const [keywords, setKeywords] = useState(initialFilters?.keywords || '');
+  const [excludeKeywords, setExcludeKeywords] = useState(initialFilters?.excludeKeywords || '');
   const [buyer, setBuyer] = useState(initialFilters?.buyer || '');
   const [countries, setCountries] = useState<string[]>(initialFilters?.countries || ['SWE']);
   const [allCountries, setAllCountries] = useState(Boolean(initialFilters?.allCountries));
@@ -115,6 +118,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   useEffect(() => {
     if (initialFilters) {
       if (initialFilters.keywords !== undefined) setKeywords(initialFilters.keywords);
+      if (initialFilters.excludeKeywords !== undefined) setExcludeKeywords(initialFilters.excludeKeywords);
       if (initialFilters.buyer !== undefined) setBuyer(initialFilters.buyer);
       if (initialFilters.countries) setCountries(initialFilters.countries);
       if (initialFilters.allCountries !== undefined) setAllCountries(initialFilters.allCountries);
@@ -130,6 +134,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const getActiveFilters = (): NoticeFilters => {
     return {
       keywords: keywords.trim() || undefined,
+      excludeKeywords: excludeKeywords.trim() || undefined,
       buyer: buyer.trim() || undefined,
       countries: allCountries ? undefined : countries,
       allCountries,
@@ -226,6 +231,26 @@ export const SearchView: React.FC<SearchViewProps> = ({
     executeSearch(1, updatedFilters);
   };
 
+  const handleResetFilters = () => {
+    setKeywords('');
+    setExcludeKeywords('');
+    setBuyer('');
+    setCountries(['SWE']);
+    setAllCountries(false);
+    setSelectedCpvs([]);
+    setFormType('competition');
+    setDatePreset('all');
+    setOnlyActive(true);
+    setRawQuery('');
+    setSmartExplanation('');
+    executeSearch(1, {
+      countries: ['SWE'],
+      formType: 'competition',
+      datePreset: 'all',
+      onlyActive: true
+    });
+  };
+
   const handleCountryToggle = (code: string) => {
     if (countries.includes(code)) {
       if (countries.length > 1) {
@@ -240,10 +265,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const handleSaveToPipeline = async (notice: Notice, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await api.saveToPipeline(notice);
-      onTenderSaved();
-    } catch (err) {
+      const res = await api.saveToPipeline(notice);
+      if (res.success) {
+        onTenderSaved();
+      } else {
+        showToast('error', res.error || 'Kunde inte spara upphandlingen till pipeline.');
+      }
+    } catch (err: any) {
       console.error('Failed to save:', err);
+      showToast('error', err?.message || 'Kunde inte spara upphandlingen till pipeline.');
     }
   };
 
@@ -338,7 +368,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
-              {['Magnit', 'TendSign', 'Kommers', 'e-Avrop', 'Mercell/Opic', 'TED Feed'].map((name) => (
+              {['Magnit', 'Verama', 'TendSign', 'Kommers', 'e-Avrop', 'Mercell/Opic', 'TED Feed'].map((name) => (
                 <div key={name} className="px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate shadow-2xs">
                   {name}
                 </div>
@@ -433,6 +463,22 @@ export const SearchView: React.FC<SearchViewProps> = ({
                 onChange={(e) => setKeywords(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && executeSearch(1)}
                 placeholder="t.ex. CAD/BIM, 489981-2026, konsult..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
+              />
+            </div>
+          </div>
+
+          {/* Exclude Keywords */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Exkludera sökord</label>
+            <div className="relative">
+              <X className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={excludeKeywords}
+                onChange={(e) => setExcludeKeywords(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && executeSearch(1)}
+                placeholder="t.ex. arkitektur, design..."
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-ted-500"
               />
             </div>
@@ -597,6 +643,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
             </label>
 
             <button
+              onClick={handleResetFilters}
+              className="px-4 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold transition-all flex items-center gap-2"
+              title="Återställ alla sökfilter"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Rensa filter
+            </button>
+
+            <button
               onClick={() => setIsWatchlistModalOpen(true)}
               className="px-4 py-2.5 rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs font-bold transition-all flex items-center gap-2"
             >
@@ -692,148 +747,15 @@ export const SearchView: React.FC<SearchViewProps> = ({
       ) : viewMode === 'card' ? (
         /* CARD VIEW */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
-          {notices.map((notice) => {
-            const isSaved = isTenderSaved(notice.id);
-            const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
-            const tenderPortalUrl = notice.links?.submission || notice.links?.documents;
-
-            return (
-              <div
-                key={notice.id}
-                onClick={() => onOpenNoticeDetail(notice)}
-                className={`bg-white dark:bg-slate-900 rounded-2xl p-5 border shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group space-y-4 ${
-                  dlInfo.isExpired
-                    ? 'border-red-300 dark:border-red-800/80 hover:border-red-500 dark:hover:border-red-500 ring-1 ring-red-400/20'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-ted-400 dark:hover:border-ted-600'
-                }`}
-              >
-                <div className="space-y-2.5">
-                  {/* Top metadata tags */}
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                        {notice.publicationNumber}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 uppercase">
-                        {notice.formType}
-                      </span>
-                      {notice.portalName && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-                          <Globe2 className="w-2.5 h-2.5" />
-                          {notice.portalName}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Value Badge & Deadline Badge */}
-                    <div className="flex items-center gap-1.5">
-                      {notice.estimatedValueFormatted && (
-                        <span
-                          className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1"
-                          title={`Uppskattat värde: ${notice.estimatedValue}`}
-                        >
-                          <Coins className="w-3 h-3 text-emerald-600" />
-                          {notice.estimatedValueFormatted}
-                        </span>
-                      )}
-                      <DeadlineBadge
-                        info={dlInfo}
-                        icon={dlInfo.isExpired ? 'alert-circle' : 'clock'}
-                        label={dlInfo.isExpired ? undefined : `${dlInfo.daysRemaining}d kvar`}
-                        className="text-[11px]"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Title */}
-                  <h3 className="font-bold text-base text-slate-900 dark:text-white leading-snug group-hover:text-ted-600 dark:group-hover:text-ted-400 transition-colors line-clamp-2">
-                    {notice.title}
-                  </h3>
-
-                  {/* Buyer & Location */}
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-400">
-                    <span className="flex items-center gap-1 font-medium text-slate-900 dark:text-slate-200 truncate max-w-[240px]">
-                      <Building className="w-3.5 h-3.5 text-ted-600 flex-shrink-0" />
-                      <span className="truncate">{notice.buyer}</span>
-                    </span>
-                    {notice.city && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                        {notice.city}, {notice.country}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Description snippet */}
-                  {notice.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-                      {notice.description}
-                    </p>
-                  )}
-
-                  {/* CPV preview pills */}
-                  {notice.cpvDetails && notice.cpvDetails.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {notice.cpvDetails.slice(0, 2).map((cpv, idx) => (
-                        <span
-                          key={idx}
-                          className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 truncate max-w-[200px]"
-                          title={`${cpv.code} - ${cpv.label}`}
-                        >
-                          {cpv.label}
-                        </span>
-                      ))}
-                      {notice.cpvDetails.length > 2 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
-                          +{notice.cpvDetails.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Card Footer Actions */}
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-                  <span className="text-slate-400">Publ: {notice.publicationDate}</span>
-
-                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    {tenderPortalUrl && (
-                      <a
-                        href={tenderPortalUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-semibold flex items-center gap-1 transition-colors text-xs"
-                        title={notice.portalName ? `Öppna anbud i ${notice.portalName}` : 'Öppna anbudsförfrågan'}
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>{notice.portalName || 'Anbud'}</span>
-                      </a>
-                    )}
-
-                    <button
-                      onClick={(e) => handleSaveToPipeline(notice, e)}
-                      className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all ${
-                        isSaved
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                      title={isSaved ? 'Sparad i pipeline' : 'Spara till pipeline'}
-                    >
-                      <Bookmark className="w-3.5 h-3.5" />
-                      <span>{isSaved ? 'Sparad' : 'Spara'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => onOpenNoticeDetail(notice)}
-                      className="px-3 py-1.5 rounded-lg bg-ted-50 hover:bg-ted-100 dark:bg-ted-950/60 dark:hover:bg-ted-900/60 text-ted-700 dark:text-ted-300 font-semibold flex items-center gap-1"
-                    >
-                      <span>Detaljer & AI</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {notices.map((notice) => (
+            <NoticeCard
+              key={notice.id}
+              notice={notice}
+              isSaved={isTenderSaved(notice.id)}
+              onSave={handleSaveToPipeline}
+              onOpenDetail={onOpenNoticeDetail}
+            />
+          ))}
         </div>
       ) : (
         /* TABLE VIEW */

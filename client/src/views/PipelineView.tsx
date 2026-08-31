@@ -20,6 +20,8 @@ import { SavedTender, TenderStatus, Notice } from '../types';
 import { api } from '../api';
 import { getDeadlineInfo } from '../utils/dateUtils';
 import { DeadlineBadge } from '../components/DeadlineBadge';
+import { UserSelectDropdown } from '../components/UserSelectDropdown';
+import { showToast } from '../components/Toast';
 
 interface PipelineViewProps {
   tenders: SavedTender[];
@@ -49,6 +51,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
   const [localTenders, setLocalTenders] = useState<SavedTender[]>(tenders);
   const [draggedTenderId, setDraggedTenderId] = useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = useState<TenderStatus | null>(null);
+  const [assigningTenderId, setAssigningTenderId] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalTenders(tenders);
@@ -119,6 +122,32 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
     if (!currentTender || currentTender.status === targetStatus) return;
 
     await handleStatusChange(tenderId, targetStatus);
+  };
+
+  const handleAssign = async (tender: SavedTender, assignedTo: string) => {
+    setAssigningTenderId(null);
+    setLocalTenders(prev =>
+      prev.map(t => (t.id === tender.id ? { ...t, assigned_to: assignedTo } : t))
+    );
+    try {
+      const res = await api.updatePipelineDetails(tender.id, {
+        notes: tender.notes,
+        internalDeadline: tender.internal_deadline || null,
+        priority: tender.priority,
+        assignedTo,
+        tags: tender.tags || []
+      });
+      if (res.success) {
+        onTenderUpdated();
+      } else {
+        showToast('error', 'Kunde inte delegera upphandlingen.');
+        setLocalTenders(tenders);
+      }
+    } catch (e) {
+      console.error('Failed to assign tender:', e);
+      showToast('error', 'Kunde inte delegera upphandlingen.');
+      setLocalTenders(tenders);
+    }
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -337,7 +366,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
 
                         {/* Deadline */}
                         {dlInfo.hasDeadline && (
-                          <div className={`flex items-center justify-between text-[11px] pt-1 border-t ${
+                          <div className={`flex items-center text-[11px] pt-1 border-t ${
                             dlInfo.isExpired
                               ? 'border-red-100 dark:border-red-900/40 text-red-600 dark:text-red-400'
                               : 'border-slate-100 dark:border-slate-800 text-slate-500'
@@ -347,14 +376,36 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                               variant="text"
                               label={dlInfo.isExpired ? undefined : dlInfo.formattedDeadline}
                             />
-                            {tender.assigned_to && (
-                              <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium">
-                                <User className="w-3 h-3 text-slate-400" />
-                                {tender.assigned_to}
-                              </span>
-                            )}
                           </div>
                         )}
+
+                        {/* Delegate / Assigned to */}
+                        <div
+                          className={`${dlInfo.hasDeadline ? '' : 'pt-1 border-t border-slate-100 dark:border-slate-800'}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {assigningTenderId === tender.id ? (
+                            <UserSelectDropdown
+                              value={tender.assigned_to || ''}
+                              onChange={(name) => handleAssign(tender, name)}
+                              placeholder="Sök person att delegera till..."
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setAssigningTenderId(tender.id)}
+                              className="w-full flex items-center gap-1 text-[11px] text-slate-500 hover:text-ted-600 dark:hover:text-ted-400 font-medium transition-colors"
+                              title="Delegera till en kollega"
+                            >
+                              <User className="w-3 h-3 flex-shrink-0" />
+                              {tender.assigned_to ? (
+                                <span className="truncate">{tender.assigned_to}</span>
+                              ) : (
+                                <span className="italic">+ Delegera</span>
+                              )}
+                            </button>
+                          )}
+                        </div>
 
                         {/* Notes preview */}
                         {tender.notes && (

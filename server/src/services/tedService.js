@@ -126,6 +126,7 @@ export function detectPortalName(url) {
   if (u.includes('opic.com') || u.includes('visma')) return 'Visma / Opic';
   if (u.includes('upphandling24')) return 'Upphandling24';
   if (u.includes('magnit-source') || u.includes('magnitglobal') || u.includes('magnit')) return 'Magnit';
+  if (u.includes('verama.com') || u.includes('eworkgroup.com')) return 'Verama';
   if (u.includes('cloudia.fi')) return 'Cloudia';
   if (u.includes('doffin.no')) return 'Doffin';
   try {
@@ -235,6 +236,14 @@ export function buildExpertQuery(filters = {}) {
     const kwClause = parseTextFieldQuery('FT', filters.keywords);
     if (kwClause) {
       parts.push(kwClause);
+    }
+  }
+
+  // Excluded keywords (Free text search, negated)
+  if (filters.excludeKeywords) {
+    const exClause = parseTextFieldQuery('FT', filters.excludeKeywords);
+    if (exClause) {
+      parts.push(`NOT ${exClause}`);
     }
   }
 

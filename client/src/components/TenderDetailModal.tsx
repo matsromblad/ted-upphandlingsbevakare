@@ -41,6 +41,7 @@ import { getDeadlineInfo, formatDeadline } from '../utils/dateUtils';
 import { UserSelectDropdown } from './UserSelectDropdown';
 import { DeadlineBadge } from './DeadlineBadge';
 import { CopyLinkButton } from './CopyLinkButton';
+import { showToast } from './Toast';
 
 interface TenderDetailModalProps {
   notice: Notice | null;
@@ -119,16 +120,22 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const handleSaveToPipeline = async () => {
     setSaving(true);
     try {
-      await api.saveToPipeline(notice, {
+      const res = await api.saveToPipeline(notice, {
         status,
         priority,
         notes,
         internalDeadline: internalDeadline || null,
         assignedTo
       });
-      onTenderUpdated();
-    } catch (e) {
+      if (res.success) {
+        showToast('success', savedItem ? 'Ändringar sparade.' : 'Upphandling sparad i pipeline.');
+        onTenderUpdated();
+      } else {
+        showToast('error', res.error || 'Kunde inte spara upphandlingen till pipeline.');
+      }
+    } catch (e: any) {
       console.error('Failed to save tender to pipeline:', e);
+      showToast('error', e?.message || 'Kunde inte spara upphandlingen till pipeline.');
     } finally {
       setSaving(false);
     }

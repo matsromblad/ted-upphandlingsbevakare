@@ -1,15 +1,16 @@
 import { parseTedDate, formatEstimatedValue } from './tedService.js';
 
-const MAGNIT_API_BASE = 'https://app-openmarketgateway-prod.azurewebsites.net/api';
-const MAGNIT_PORTAL_BASE = 'https://magnit-source.magnitglobal.com/browse/job-details';
+// Ework Group's consultant marketplace, formerly branded "Verama" and now merged into the
+// Ework domain. app.verama.com still serves the public job-request browsing API used by its
+// own (unauthenticated) "Find work" page — same open-JSON-API pattern as magnitService.js.
+const VERAMA_API_BASE = 'https://app.verama.com/api/public';
+const VERAMA_PORTAL_BASE = 'https://app.verama.com/job-requests';
 
 let cachedJobs = [];
-// Map<jobId, { data, cachedAt }> — bounded and TTL'd below so it can't grow unbounded
-// across the process lifetime as new job IDs are seen.
 let cachedDetailsMap = new Map();
 let lastFetchedAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
-const DETAILS_CACHE_TTL_MS = 30 * 60 * 1000; // job details change rarely; cache longer than the list
+const DETAILS_CACHE_TTL_MS = 30 * 60 * 1000;
 const DETAILS_CACHE_MAX_SIZE = 500;
 
 function pruneDetailsCache() {
@@ -19,7 +20,6 @@ function pruneDetailsCache() {
       cachedDetailsMap.delete(id);
     }
   }
-  // Evict oldest entries (Map preserves insertion order) if still over the cap
   while (cachedDetailsMap.size > DETAILS_CACHE_MAX_SIZE) {
     const oldestKey = cachedDetailsMap.keys().next().value;
     cachedDetailsMap.delete(oldestKey);
@@ -42,105 +42,96 @@ function stripHtml(html = '') {
     .trim();
 }
 
-export async function fetchMagnitJobDetails(jobId) {
-  const cached = cachedDetailsMap.get(jobId);
+export async function fetchVeramaJobDetails(id) {
+  const cached = cachedDetailsMap.get(id);
   if (cached && (Date.now() - cached.cachedAt) < DETAILS_CACHE_TTL_MS) {
     return cached.data;
   }
 
   try {
-    const res = await fetch(`${MAGNIT_API_BASE}/jobsearch/${jobId}/details`, {
+    const res = await fetch(`${VERAMA_API_BASE}/job-requests/${id}`, {
       headers: { 'Accept': 'application/json' }
     });
 
     if (!res.ok) return cached?.data || null;
 
     const data = await res.json();
-    // Delete-then-set so re-fetched entries move to the end for the FIFO eviction order.
-    cachedDetailsMap.delete(jobId);
-    cachedDetailsMap.set(jobId, { data, cachedAt: Date.now() });
+    cachedDetailsMap.delete(id);
+    cachedDetailsMap.set(id, { data, cachedAt: Date.now() });
     pruneDetailsCache();
     return data;
   } catch (err) {
-    console.error(`[Magnit Service] Failed to fetch details for ${jobId}:`, err.message);
+    console.error(`[Verama Service] Failed to fetch details for ${id}:`, err.message);
     return cached?.data || null;
   }
 }
 
-async function refreshMagnitCache(force = false) {
+async function refreshVeramaCache(force = false) {
   const now = Date.now();
   if (!force && cachedJobs.length > 0 && (now - lastFetchedAt) < CACHE_TTL_MS) {
     return cachedJobs;
   }
 
   try {
-    const res = await fetch(`${MAGNIT_API_BASE}/jobsearch`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        pageSize: 150,
-        sortOption: { orderBy: 'PublishedDate', direction: 'Desc' }
-      })
+    const params = new URLSearchParams({
+      page: '0',
+      size: '250',
+      query: '',
+      dedicated: 'false',
+      favouritesOnly: 'false',
+      recommendedOnly: 'false',
+      sort: 'firstDayOfApplications,DESC'
+    });
+    const res = await fetch(`${VERAMA_API_BASE}/job-requests?${params.toString()}`, {
+      headers: { 'Accept': 'application/json' }
     });
 
     if (!res.ok) {
-      console.warn(`[Magnit Service] API returned status ${res.status}`);
+      console.warn(`[Verama Service] API returned status ${res.status}`);
       return cachedJobs;
     }
 
     const data = await res.json();
-    const rawJobs = data.jobs || [];
+    const rawJobs = data.content || [];
 
     cachedJobs = rawJobs;
     lastFetchedAt = now;
 
-    // Prefetch top job details in background
+    // Prefetch top job details (for full description text) in background
     const prefetchSlice = rawJobs.slice(0, 40);
-    Promise.all(prefetchSlice.map(j => fetchMagnitJobDetails(j.id))).catch(() => {});
+    Promise.all(prefetchSlice.map(j => fetchVeramaJobDetails(j.id))).catch(() => {});
 
     return cachedJobs;
   } catch (err) {
-    console.error('[Magnit Service] Error fetching Magnit jobs:', err.message);
+    console.error('[Verama Service] Error fetching Verama jobs:', err.message);
     return cachedJobs;
   }
 }
 
-export function normalizeMagnitJob(job, details = null) {
+export function normalizeVeramaJob(job, details = null) {
   if (!job) return null;
 
   const jobId = job.id;
-  const requestId = job.technicalDetails?.requestId || details?.technicalDetails?.requestId || jobId.slice(0, 8).toUpperCase();
-  const pubNum = `MAGNIT-${requestId}`;
+  const systemId = job.systemId || details?.systemId || String(jobId);
+  const pubNum = `VERAMA-${systemId}`;
 
   const title = job.title || details?.title || 'Konsultuppdrag';
 
-  let buyerName = 'Magnit / Kund';
-  const rawCompany = details?.company || job.company;
-  if (rawCompany && rawCompany !== '-' && rawCompany.trim()) {
-    buyerName = rawCompany.trim();
-  } else if (details?.clientInfo?.name && details.clientInfo.name !== 'Public Transport sector') {
-    buyerName = details.clientInfo.name;
-  } else if (rawCompany === '-' && title.toLowerCase().includes('tunnelbanan')) {
-    buyerName = 'Förvaltning för Utbyggd Tunnelbana (FUT)';
-  } else if (rawCompany === '-' && (title.toLowerCase().includes('tvärbanan') || title.toLowerCase().includes('roslagsbanan') || title.toLowerCase().includes('spårväg'))) {
-    buyerName = 'Trafikförvaltningen (SL)';
-  }
+  const clientName = job.legalEntityClient?.name || details?.legalEntityClient?.name;
+  const brokerName = job.administratorLegalEntityClient?.name || details?.administratorLegalEntityClient?.name;
+  const buyerName = (clientName && clientName.trim()) || (brokerName && brokerName.trim()) || 'Ework/Verama-kund';
 
-  const locStr = details?.requestDetails?.location || job.location || 'Stockholm, SWE';
-  const locParts = locStr.split(',');
-  const city = locParts[0]?.trim() || 'Stockholm';
-  const country = 'SWE';
+  const loc = (job.locations && job.locations[0]) || (details?.locations && details.locations[0]) || null;
+  const city = loc?.city || '';
+  const country = loc?.countryCode || 'SWE';
 
-  const rawHtmlDesc = details?.requiredSkillsAndEducation || details?.description || job.description || title;
+  const rawHtmlDesc = details?.description || job.description || title;
   const description = stripHtml(rawHtmlDesc);
 
-  const pubDateRaw = job.technicalDetails?.dateFirstPublished || details?.technicalDetails?.dateFirstPublished || '';
-  let publicationDate = pubDateRaw ? pubDateRaw.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const pubDateRaw = job.firstDayOfApplications || details?.firstDayOfApplications || '';
+  const publicationDate = pubDateRaw ? pubDateRaw.slice(0, 10) : new Date().toISOString().slice(0, 10);
 
-  const deadlineStr = details?.requestDetails?.submissionDeadline || job.requestDetails?.submissionDeadline || job.submissionDeadline || null;
+  const deadlineStr = job.lastDayOfApplications || details?.lastDayOfApplications || null;
   let deadline = deadlineStr;
   let deadlineStatus = 'OPEN';
   let daysRemaining = null;
@@ -156,18 +147,14 @@ export function normalizeMagnitJob(job, details = null) {
         daysRemaining = -daysPassed;
       } else {
         daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-        if (daysRemaining <= 7) {
-          deadlineStatus = 'EXPIRING_SOON';
-        } else {
-          deadlineStatus = 'OPEN';
-        }
+        deadlineStatus = daysRemaining <= 7 ? 'EXPIRING_SOON' : 'OPEN';
       }
     }
   }
 
-  const rateInfo = details?.requestDetails?.rate || job.rate || job.requestDetails?.rate;
-  const rateAmount = rateInfo?.amount ? Number(rateInfo.amount) : null;
-  const rateCurrency = rateInfo?.currencySymbol || 'kr';
+  const rate = job.rate || details?.rate || null;
+  const rateAmount = rate?.maxRate ? Number(rate.maxRate) : null;
+  const rateCurrency = rate?.currency || 'SEK';
 
   let estimatedValue = '';
   let estimatedValueAmount = null;
@@ -178,34 +165,28 @@ export function normalizeMagnitJob(job, details = null) {
     estimatedValue = `${rateAmount} ${rateCurrency}/tim`;
     estimatedValueFormatted = `${rateAmount} kr/h`;
 
-    const startDate = details?.requestDetails?.startDate || job.requestDetails?.startDate;
-    const endDate = details?.requestDetails?.endDate || job.requestDetails?.endDate;
+    const hoursPerWeek = Number(job.hoursPerWeek || details?.hoursPerWeek || 40);
+    const start = job.startDate || details?.startDate;
+    const end = job.endDate || details?.endDate;
     let weeks = 20;
-
-    if (startDate && endDate) {
-      const s = new Date(startDate).getTime();
-      const e = new Date(endDate).getTime();
+    if (start && end) {
+      const s = new Date(start).getTime();
+      const e = new Date(end).getTime();
       if (!isNaN(s) && !isNaN(e) && e > s) {
         weeks = Math.max(1, Math.round((e - s) / (1000 * 60 * 60 * 24 * 7)));
       }
     }
 
-    const hours = Number(details?.requestDetails?.hoursPerWeek || 40);
-    const totalEst = rateAmount * hours * weeks;
+    const totalEst = rateAmount * hoursPerWeek * weeks;
     estimatedValueAmount = totalEst;
-
-    const valObj = formatEstimatedValue(totalEst, 'SEK');
-    if (valObj) {
-      estimatedValueDisplay = `${rateAmount} kr/tim (~${valObj.humanized})`;
-    } else {
-      estimatedValueDisplay = `${rateAmount} kr/tim`;
-    }
+    const valObj = formatEstimatedValue(totalEst, rateCurrency);
+    estimatedValueDisplay = valObj ? `${rateAmount} kr/tim (~${valObj.humanized})` : `${rateAmount} kr/tim`;
   }
 
-  const jobUrl = `${MAGNIT_PORTAL_BASE}/${jobId}`;
+  const jobUrl = `${VERAMA_PORTAL_BASE}/${systemId}`;
 
   return {
-    id: `magnit-${jobId}`,
+    id: `verama-${jobId}`,
     publicationNumber: pubNum,
     title,
     description,
@@ -224,23 +205,23 @@ export function normalizeMagnitJob(job, details = null) {
     formType: 'competition',
     estimatedValue,
     estimatedValueAmount,
-    estimatedValueCurrency: 'SEK',
+    estimatedValueCurrency: rateCurrency,
     estimatedValueFormatted,
     estimatedValueDisplay,
-    portalName: 'Magnit',
+    portalName: 'Verama',
     links: {
       tedHtml: jobUrl,
       submission: jobUrl,
       documents: jobUrl,
-      portalName: 'Magnit'
+      portalName: 'Verama'
     },
     raw: { job, details }
   };
 }
 
-export async function searchMagnitNotices(filters = {}) {
+export async function searchVeramaNotices(filters = {}) {
   try {
-    const rawJobs = await refreshMagnitCache();
+    const rawJobs = await refreshVeramaCache();
     if (!rawJobs || rawJobs.length === 0) {
       return { success: true, notices: [], totalCount: 0 };
     }
@@ -248,7 +229,7 @@ export async function searchMagnitNotices(filters = {}) {
     const normalized = [];
     for (const j of rawJobs) {
       const details = cachedDetailsMap.get(j.id)?.data || null;
-      const notice = normalizeMagnitJob(j, details);
+      const notice = normalizeVeramaJob(j, details);
       if (notice) normalized.push(notice);
     }
 
@@ -304,10 +285,8 @@ export async function searchMagnitNotices(filters = {}) {
     }
 
     if (filters.countries && filters.countries.length > 0 && !filters.allCountries) {
-      const hasSwe = filters.countries.some(c => c.toUpperCase() === 'SWE');
-      if (!hasSwe) {
-        return { success: true, notices: [], totalCount: 0 };
-      }
+      const wantedCountries = filters.countries.map(c => c.toUpperCase());
+      filtered = filtered.filter(n => wantedCountries.includes((n.country || '').toUpperCase()));
     }
 
     const shouldFilterOnlyActive = filters.onlyActive === true || (filters.onlyActive !== false && filters.includeExpired !== true);
@@ -327,15 +306,15 @@ export async function searchMagnitNotices(filters = {}) {
       totalCount: filtered.length
     };
   } catch (err) {
-    console.error('[Magnit Service] Search failed:', err);
+    console.error('[Verama Service] Search failed:', err);
     return { success: false, notices: [], totalCount: 0, error: err.message };
   }
 }
 
-export async function getMagnitNoticeById(id) {
-  const cleanId = id.replace(/^magnit-/i, '');
-  const details = await fetchMagnitJobDetails(cleanId);
+export async function getVeramaNoticeById(id) {
+  const cleanId = id.replace(/^verama-/i, '');
+  const details = await fetchVeramaJobDetails(cleanId);
   if (!details) return null;
 
-  return normalizeMagnitJob(details, details);
+  return normalizeVeramaJob(details, details);
 }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User, Search, Check, X, ChevronDown, UserCheck, Sparkles, Clock } from 'lucide-react';
 import { TeamMember } from '../types';
 import { api } from '../api';
@@ -20,7 +21,9 @@ export const UserSelectDropdown: React.FC<UserSelectDropdownProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -29,13 +32,39 @@ export const UserSelectDropdown: React.FC<UserSelectDropdownProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // The trigger can live inside a scrollable/clipped ancestor (e.g. a Kanban column), so the
+  // menu is portaled to <body> and positioned from the trigger's live viewport rect instead of
+  // relying on CSS positioning, which would otherwise get clipped by that ancestor's overflow.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    const updatePosition = () => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        setMenuPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -152,9 +181,13 @@ export const UserSelectDropdown: React.FC<UserSelectDropdownProps> = ({
         </div>
       </div>
 
-      {/* Dropdown Menu */}
-      {isOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden animate-fadeIn">
+      {/* Dropdown Menu — portaled to <body> so it can't be clipped by a scrollable/overflow ancestor */}
+      {isOpen && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+          className="z-50 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden animate-fadeIn"
+        >
           {/* Search Box */}
           <div className="p-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80">
             <div className="relative">
@@ -280,7 +313,8 @@ export const UserSelectDropdown: React.FC<UserSelectDropdownProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

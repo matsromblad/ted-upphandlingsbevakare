@@ -43,6 +43,7 @@ export interface Notice {
 
 export interface NoticeFilters {
   keywords?: string;
+  excludeKeywords?: string;
   titleKeyword?: string;
   buyer?: string;
   countries?: string[];

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
 import { searchMagnitNotices, getMagnitNoticeById } from '../services/magnitService.js';
+import { searchVeramaNotices, getVeramaNoticeById } from '../services/veramaService.js';
 import { naturalLanguageToFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant } from '../services/minimaxService.js';
 import { parseUploadedProcurementFiles } from '../services/documentParserService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
@@ -135,9 +136,10 @@ router.post('/ted/search', async (req, res) => {
     const targetPage = Math.max(1, parseInt(page) || 1);
     const targetLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
     
-    // Check if query is a direct publication number search
+    // Check if query is a direct publication number search for one of the directly-integrated portals
     const kw = (typeof filters.keywords === 'string' ? filters.keywords : '').trim();
     const isDirectMagnit = kw.toLowerCase().startsWith('magnit-') || (filters.rawQuery && filters.rawQuery.toLowerCase().includes('magnit'));
+    const isDirectVerama = kw.toLowerCase().startsWith('verama-') || (filters.rawQuery && filters.rawQuery.toLowerCase().includes('verama'));
 
     if (isDirectMagnit) {
       const cleanId = kw.replace(/^magnit-/i, '');
@@ -153,41 +155,66 @@ router.post('/ted/search', async (req, res) => {
       });
     }
 
-    // Execute both TED search and Magnit search in parallel
-    const [tedResult, magnitResult] = await Promise.allSettled([
+    if (isDirectVerama) {
+      const cleanId = kw.replace(/^verama-/i, '');
+      const veramaNotice = await getVeramaNoticeById(cleanId);
+      return res.json({
+        success: true,
+        query: `publication-number = ${kw}`,
+        totalCount: veramaNotice ? 1 : 0,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        notices: veramaNotice ? [veramaNotice] : []
+      });
+    }
+
+    // Execute TED search plus the open-API portal integrations (Magnit, Verama/Ework) in parallel
+    const [tedResult, magnitResult, veramaResult] = await Promise.allSettled([
       searchTedNotices(filters, { page: targetPage, limit: targetLimit }),
-      searchMagnitNotices(filters)
+      searchMagnitNotices(filters),
+      searchVeramaNotices(filters)
     ]);
 
     const tedSuccess = tedResult.status === 'fulfilled' && tedResult.value.success;
     const magnitSuccess = magnitResult.status === 'fulfilled' && magnitResult.value.success;
+    const veramaSuccess = veramaResult.status === 'fulfilled' && veramaResult.value.success;
 
     const tedNotices = tedSuccess ? (tedResult.value.notices || []) : [];
     const tedTotal = tedSuccess ? (tedResult.value.totalCount || 0) : 0;
 
     const magnitNotices = magnitSuccess ? (magnitResult.value.notices || []) : [];
-    const magnitTotal = magnitSuccess ? (magnitResult.value.totalCount || 0) : 0;
+    const veramaNotices = veramaSuccess ? (veramaResult.value.notices || []) : [];
 
-    const totalCount = tedTotal + magnitTotal;
+    // Merge the two directly-queried portal sources (unpaginated at the source) into one
+    // newest-first list, then paginate it locally the same way the TED results are paginated.
+    const portalNotices = [...magnitNotices, ...veramaNotices].sort((a, b) => {
+      const dateA = a.publicationDate || '';
+      const dateB = b.publicationDate || '';
+      return dateB.localeCompare(dateA);
+    });
+    const portalTotal = portalNotices.length;
+
+    const totalCount = tedTotal + portalTotal;
     const totalPages = Math.max(1, Math.ceil(totalCount / targetLimit));
 
     let finalNotices = [];
 
-    if (magnitTotal === 0) {
+    if (portalTotal === 0) {
       finalNotices = tedNotices;
     } else if (tedTotal === 0) {
       const pageStart = (targetPage - 1) * targetLimit;
-      finalNotices = magnitNotices.slice(pageStart, pageStart + targetLimit);
+      finalNotices = portalNotices.slice(pageStart, pageStart + targetLimit);
     } else {
       const pageStart = (targetPage - 1) * targetLimit;
       const pageEnd = targetPage * targetLimit;
-      const magnitInPage = magnitNotices.slice(pageStart, pageEnd);
+      const portalInPage = portalNotices.slice(pageStart, pageEnd);
 
-      if (magnitInPage.length === targetLimit) {
-        finalNotices = magnitInPage;
+      if (portalInPage.length === targetLimit) {
+        finalNotices = portalInPage;
       } else {
-        const remainingSlots = targetLimit - magnitInPage.length;
-        finalNotices = [...magnitInPage, ...tedNotices.slice(0, remainingSlots)];
+        const remainingSlots = targetLimit - portalInPage.length;
+        finalNotices = [...portalInPage, ...tedNotices.slice(0, remainingSlots)];
       }
     }
 
@@ -212,10 +239,15 @@ router.get('/ted/notice/:id', async (req, res) => {
 
     if (id.toLowerCase().startsWith('magnit-')) {
       notice = await getMagnitNoticeById(id);
+    } else if (id.toLowerCase().startsWith('verama-')) {
+      notice = await getVeramaNoticeById(id);
     } else {
       notice = await getNoticeById(id);
       if (!notice) {
         notice = await getMagnitNoticeById(id);
+      }
+      if (!notice) {
+        notice = await getVeramaNoticeById(id);
       }
     }
 
