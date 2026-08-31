@@ -24,24 +24,34 @@ import { initScheduler } from './services/schedulerService.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust the platform's reverse proxy (Render, Cloudflare, etc.) so req.protocol reflects the
+// real external scheme (https) instead of the internal http the proxy connects over. Needed
+// for the same-origin check below to compute the correct https:// self-origin.
+app.set('trust proxy', 1);
+
 // Middleware
-// CORS is restricted to an allowlist of known frontend origins (defaults to APP_BASE_URL, e.g.
-// the Vite dev server). Requests with no Origin header (curl, server-to-server, same-origin
-// page loads) are always allowed since browsers don't send Origin for those.
+// CORS allows: (1) the app's own origin — this app serves its own frontend build (see the
+// static-serving block below), so a same-origin deployment must always work without extra
+// config; (2) an explicit allowlist for cross-origin setups (defaults to APP_BASE_URL, e.g.
+// the Vite dev server proxying to a separate backend port). Requests with no Origin header
+// (curl, server-to-server) are always allowed since browsers don't send Origin for those.
 const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.APP_BASE_URL || 'http://localhost:5173')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
 
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || corsAllowedOrigins.includes(origin)) {
-      return callback(null, true);
+app.use((req, res, next) => {
+  const selfOrigin = `${req.protocol}://${req.get('host')}`;
+  return cors({
+    origin(origin, callback) {
+      if (!origin || origin === selfOrigin || corsAllowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      console.warn(`[CORS] Blocked request from disallowed origin: ${origin} (self: ${selfOrigin})`);
+      return callback(new Error('Not allowed by CORS'));
     }
-    console.warn(`[CORS] Blocked request from disallowed origin: ${origin}`);
-    return callback(new Error('Not allowed by CORS'));
-  }
-}));
+  })(req, res, next);
+});
 app.use(express.json({ limit: '10mb' }));
 
 // Healthcheck
