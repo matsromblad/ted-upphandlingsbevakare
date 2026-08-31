@@ -171,3 +171,168 @@ CREATE POLICY "Users can delete own saved tenders" ON public.saved_tenders FOR D
 CREATE POLICY "Users can view own chats" ON public.chat_messages FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own chats" ON public.chat_messages FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete own chats" ON public.chat_messages FOR DELETE USING (auth.uid() = user_id);
+
+-- ==============================================================================
+-- Indexes: the app's most frequent queries filter/sort by these columns. Without
+-- them, watchlist_hits and saved_tenders scans get slower as rows accumulate.
+-- ==============================================================================
+CREATE INDEX IF NOT EXISTS idx_watchlist_hits_user_discovered ON public.watchlist_hits (user_id, discovered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watchlist_hits_user_unread ON public.watchlist_hits (user_id, is_read) WHERE is_read = false;
+CREATE INDEX IF NOT EXISTS idx_watchlist_hits_watchlist_discovered ON public.watchlist_hits (watchlist_id, discovered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watchlist_hits_pending_email ON public.watchlist_hits (watchlist_id, user_id) WHERE emailed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_saved_tenders_user_updated ON public.saved_tenders (user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watchlists_active ON public.watchlists (active) WHERE active = true;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_user_session ON public.chat_messages (user_id, session_id, created_at);
+
+-- ==============================================================================
+-- Atomic counter/multi-step RPCs
+--
+-- These run as SECURITY INVOKER (the default) so Row Level Security still applies using
+-- the calling user's own auth.uid() — they are not a way around RLS, just a way to make
+-- multi-statement or read-modify-write operations atomic instead of racy when done as
+-- separate round-trips from the application (see watchlistDao.updateStats/markAsRead and
+-- pipelineDao.save/delete in server/src/db.js, which call these instead of doing the
+-- read-then-write themselves).
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION public.increment_watchlist_stats(
+  p_id TEXT,
+  p_last_run_at TIMESTAMPTZ,
+  p_hit_count INTEGER,
+  p_new_count_delta INTEGER
+) RETURNS void AS $$
+BEGIN
+  UPDATE public.watchlists
+  SET last_run_at = p_last_run_at,
+      last_hit_count = p_hit_count,
+      new_count = new_count + p_new_count_delta
+  WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Only the background poller (service role) calls this; it isn't user-initiated.
+REVOKE ALL ON FUNCTION public.increment_watchlist_stats(TEXT, TIMESTAMPTZ, INTEGER, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.increment_watchlist_stats(TEXT, TIMESTAMPTZ, INTEGER, INTEGER) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.adjust_watchlist_new_count(
+  p_id TEXT,
+  p_delta INTEGER
+) RETURNS void AS $$
+BEGIN
+  UPDATE public.watchlists
+  SET new_count = GREATEST(0, new_count + p_delta)
+  WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION public.adjust_watchlist_new_count(TEXT, INTEGER) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.save_pipeline_tender(
+  p_id TEXT,
+  p_user_id UUID,
+  p_notice_id TEXT,
+  p_title TEXT,
+  p_buyer TEXT,
+  p_country TEXT,
+  p_deadline TEXT,
+  p_estimated_value TEXT,
+  p_status TEXT,
+  p_priority TEXT,
+  p_notes TEXT,
+  p_internal_deadline TEXT,
+  p_assigned_to TEXT,
+  p_tags_json JSONB,
+  p_notice_data_json JSONB
+) RETURNS public.saved_tenders AS $$
+DECLARE
+  result public.saved_tenders;
+BEGIN
+  INSERT INTO public.saved_tenders (
+    id, user_id, notice_id, title, buyer, country, deadline, estimated_value,
+    status, priority, notes, internal_deadline, assigned_to, tags_json,
+    notice_data_json, updated_at
+  )
+  VALUES (
+    p_id, p_user_id, p_notice_id, p_title, p_buyer, p_country, p_deadline, p_estimated_value,
+    p_status, p_priority, p_notes, p_internal_deadline, p_assigned_to, p_tags_json,
+    p_notice_data_json, timezone('utc'::text, now())
+  )
+  ON CONFLICT (user_id, notice_id) DO UPDATE SET
+    title = EXCLUDED.title,
+    buyer = EXCLUDED.buyer,
+    country = EXCLUDED.country,
+    deadline = EXCLUDED.deadline,
+    estimated_value = EXCLUDED.estimated_value,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    notes = EXCLUDED.notes,
+    internal_deadline = EXCLUDED.internal_deadline,
+    assigned_to = EXCLUDED.assigned_to,
+    tags_json = EXCLUDED.tags_json,
+    notice_data_json = EXCLUDED.notice_data_json,
+    updated_at = timezone('utc'::text, now())
+  RETURNING * INTO result;
+
+  UPDATE public.watchlist_hits
+  SET is_saved = true
+  WHERE notice_id = p_notice_id AND user_id = p_user_id;
+
+  RETURN result;
+END;
+$$ LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION public.save_pipeline_tender(TEXT, UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, JSONB) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.delete_pipeline_tender(
+  p_id TEXT,
+  p_user_id UUID
+) RETURNS void AS $$
+DECLARE
+  v_notice_id TEXT;
+BEGIN
+  SELECT notice_id INTO v_notice_id FROM public.saved_tenders WHERE id = p_id AND user_id = p_user_id;
+
+  IF v_notice_id IS NOT NULL THEN
+    UPDATE public.watchlist_hits SET is_saved = false WHERE notice_id = v_notice_id AND user_id = p_user_id;
+    DELETE FROM public.saved_tenders WHERE id = p_id AND user_id = p_user_id;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+GRANT EXECUTE ON FUNCTION public.delete_pipeline_tender(TEXT, UUID) TO authenticated;
+
+-- ==============================================================================
+-- Cross-instance cron lock: prevents multiple server instances from polling the same
+-- watchlists at the same time (each would otherwise burn TED/Magnit API quota and could
+-- send duplicate digest emails). Not user data, so RLS is not enabled on this table.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.cron_locks (
+  id TEXT PRIMARY KEY,
+  locked_until TIMESTAMPTZ,
+  locked_by TEXT
+);
+
+REVOKE ALL ON public.cron_locks FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.try_acquire_cron_lock(
+  p_id TEXT,
+  p_ttl_seconds INTEGER,
+  p_holder TEXT
+) RETURNS BOOLEAN AS $$
+DECLARE
+  acquired BOOLEAN := false;
+BEGIN
+  INSERT INTO public.cron_locks (id, locked_until, locked_by)
+  VALUES (p_id, now() + (p_ttl_seconds || ' seconds')::interval, p_holder)
+  ON CONFLICT (id) DO UPDATE
+    SET locked_until = EXCLUDED.locked_until,
+        locked_by = EXCLUDED.locked_by
+    WHERE public.cron_locks.locked_until IS NULL OR public.cron_locks.locked_until < now()
+  RETURNING true INTO acquired;
+
+  RETURN COALESCE(acquired, false);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+REVOKE ALL ON FUNCTION public.try_acquire_cron_lock(TEXT, INTEGER, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.try_acquire_cron_lock(TEXT, INTEGER, TEXT) TO service_role;

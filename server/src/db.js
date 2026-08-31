@@ -413,14 +413,15 @@ export const watchlistDao = {
 
   updateStats: async (id, lastRunAt, hitCount, newCount) => {
     if (isSupabaseConfigured) {
-      const { data: current } = await supabaseAdmin.from('watchlists').select('new_count').eq('id', id).single();
-      const nextNewCount = (current?.new_count || 0) + (newCount || 0);
-
-      await supabaseAdmin.from('watchlists').update({
-        last_run_at: lastRunAt,
-        last_hit_count: hitCount,
-        new_count: nextNewCount
-      }).eq('id', id);
+      // Atomic RPC (new_count = new_count + delta in SQL) instead of a JS read-modify-write,
+      // which would race with concurrent updates to the same watchlist (see schema.sql).
+      const { error } = await supabaseAdmin.rpc('increment_watchlist_stats', {
+        p_id: id,
+        p_last_run_at: lastRunAt,
+        p_hit_count: hitCount,
+        p_new_count_delta: newCount || 0
+      });
+      if (error) throw error;
       return;
     }
 
@@ -609,10 +610,8 @@ export const hitsDao = {
 
       if (hit && !hit.is_read) {
         await client.from('watchlist_hits').update({ is_read: true }).eq('id', id).eq('user_id', userId);
-        const { data: wl } = await client.from('watchlists').select('new_count').eq('id', hit.watchlist_id).single();
-        if (wl) {
-          await client.from('watchlists').update({ new_count: Math.max(0, (wl.new_count || 1) - 1) }).eq('id', hit.watchlist_id);
-        }
+        // Atomic RPC instead of a JS read-modify-write of new_count (see schema.sql).
+        await client.rpc('adjust_watchlist_new_count', { p_id: hit.watchlist_id, p_delta: -1 });
       }
       return;
     }
@@ -735,33 +734,30 @@ export const pipelineDao = {
     const userId = item.user_id;
 
     if (isCloudUser(userId)) {
-      const payload = {
-        id: item.id,
-        user_id: userId,
-        notice_id: item.notice_id,
-        title: item.title,
-        buyer: item.buyer,
-        country: item.country,
-        deadline: item.deadline,
-        estimated_value: item.estimated_value,
-        status: item.status || 'INBOX',
-        priority: item.priority || 'MEDIUM',
-        notes: item.notes || '',
-        internal_deadline: item.internal_deadline,
-        assigned_to: item.assigned_to || '',
-        tags_json: typeof item.tags_json === 'string' ? JSON.parse(item.tags_json) : item.tags_json,
-        notice_data_json: typeof item.notice_data_json === 'string' ? JSON.parse(item.notice_data_json) : item.notice_data_json,
-        updated_at: new Date().toISOString()
-      };
+      // Atomic RPC: upserts saved_tenders and flags the matching watchlist_hits row as saved
+      // in a single transaction, instead of two separate round-trips that could leave the
+      // hit's is_saved flag out of sync with saved_tenders if the second call failed.
+      const { data, error } = await client.rpc('save_pipeline_tender', {
+        p_id: item.id,
+        p_user_id: userId,
+        p_notice_id: item.notice_id,
+        p_title: item.title,
+        p_buyer: item.buyer,
+        p_country: item.country,
+        p_deadline: item.deadline,
+        p_estimated_value: item.estimated_value,
+        p_status: item.status || 'INBOX',
+        p_priority: item.priority || 'MEDIUM',
+        p_notes: item.notes || '',
+        p_internal_deadline: item.internal_deadline,
+        p_assigned_to: item.assigned_to || '',
+        p_tags_json: typeof item.tags_json === 'string' ? JSON.parse(item.tags_json) : item.tags_json,
+        p_notice_data_json: typeof item.notice_data_json === 'string' ? JSON.parse(item.notice_data_json) : item.notice_data_json
+      });
 
-      const { data, error } = await client
-        .from('saved_tenders')
-        .upsert(payload, { onConflict: 'user_id, notice_id' })
-        .select()
-        .single();
-
+      // The RPC returns public.saved_tenders (a single row, not SETOF), so PostgREST
+      // already sends back one object rather than an array — no .single() needed here.
       if (error) throw error;
-      await client.from('watchlist_hits').update({ is_saved: true }).eq('notice_id', item.notice_id).eq('user_id', userId);
       return {
         ...data,
         tags_json: JSON.stringify(data.tags_json),
@@ -880,11 +876,10 @@ export const pipelineDao = {
 
   delete: async (id, userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data: item } = await client.from('saved_tenders').select('notice_id').eq('id', id).eq('user_id', userId).single();
-      if (item) {
-        await client.from('watchlist_hits').update({ is_saved: false }).eq('notice_id', item.notice_id).eq('user_id', userId);
-      }
-      await client.from('saved_tenders').delete().eq('id', id).eq('user_id', userId);
+      // Atomic RPC: unflags the watchlist_hits row and deletes the saved_tenders row in a
+      // single transaction (see save_pipeline_tender above for the same rationale).
+      const { error } = await client.rpc('delete_pipeline_tender', { p_id: id, p_user_id: userId });
+      if (error) throw error;
       return;
     }
 
