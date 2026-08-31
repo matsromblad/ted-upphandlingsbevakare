@@ -1,6 +1,6 @@
 # WSP TED Bevakare (Tenders Electronic Daily Monitor)
 
-En fullstack-applikation framtagen för och av **WSP** för att söka, bevaka och analysera offentliga upphandlingar från **EU:s officiella databas TED (Tenders Electronic Daily)**, förstärkt med **MiniMax-M3 LLM** och **Supabase** för fleranvändarstöd och Single Sign-On (SSO).
+En fullstack-applikation framtagen för och av **WSP** för att söka, bevaka och analysera offentliga upphandlingar från **EU:s officiella databas TED (Tenders Electronic Daily)** och **Magnit Source**, förstärkt med **MiniMax-M3 LLM** och **Supabase** för fleranvändarstöd och Single Sign-On (SSO).
 
 ![WSP](https://img.shields.io/badge/WSP-Sverige-red)
 ![TED Bevakare](https://img.shields.io/badge/TED-EU%20Procurement-blue)
@@ -18,10 +18,11 @@ En fullstack-applikation framtagen för och av **WSP** för att söka, bevaka oc
   - Varje användare har sina egna privata bevakningar, träffar, sparade anbud (pipeline) och företagsprofil.
   - Row Level Security (RLS) i Supabase PostgreSQL säkerställer strikt dataseparation.
 
-- **🔍 TED Live-Sökning & Utforskning**:
-  - Direktuppkoppling mot TED Search API v3 (`api.ted.europa.eu`).
-  - Sökning på fritext, CPV-koder, geografi (Sverige, Norden, EU), typ av upphandling och datum.
-  - Kort- och tabellvy med visuell deadline-nedräkning.
+- **🔍 Enhetlig Sökning & Utforskning (TED + Magnit Source)**:
+  - Direktuppkoppling mot TED Search API v3 (`api.ted.europa.eu`) och Magnit Source (konsultuppdrag/mäklarportal), sammanslaget i en gemensam träfflista med paginering.
+  - Sökning på fritext, CPV-koder, upphandlare/organisation, geografi (Sverige, Norden, EU), typ av upphandling och datum.
+  - Direktslagning på publikationsnummer, inklusive Magnit-ID (`magnit-<id>`).
+  - Kort- och tabellvy med visuell deadline-nedräkning och kolumner som t.ex. Totalt arvode.
   - Stöd för TED Expert Query syntax.
 
 - **🧠 MiniMax Smart Sökassistent (NLP)**:
@@ -30,15 +31,22 @@ En fullstack-applikation framtagen för och av **WSP** för att söka, bevaka oc
 - **💬 MiniMax AI Copilot (Interaktiv Chatt)**:
   - Kontextmedveten anbudsrådgivare som tolkar skall-krav, hjälper till att formulera frågor till upphandlaren och tar fram dispositionsutkast för anbud.
 
+- **📎 Djupanalys av Upphandlingsdokument**:
+  - Ladda upp förfrågningsunderlag (ZIP, PDF, DOCX, XLSX) direkt på en upphandling.
+  - MiniMax läser och tolkar de faktiska dokumenten (inte bara TED-sammanfattningen) och genererar en analys grundad i skall-krav, bilagor och kravspecifikationer.
+  - Analysen sparas automatiskt på upphandlingen i anbudspipelinen.
+
 - **🔔 Automatiska Bevakningsprofiler & Bakgrundspollning**:
-  - Skapa sparade bevakningar med egna filter.
-  - Inbyggd bakgrundsmotor som automatiskt pollar TED och flaggar **nya upphandlingar** med olästa badges.
+  - Skapa sparade bevakningar med egna filter, mot både TED och Magnit Source.
+  - Inbyggd bakgrundsmotor som automatiskt pollar och flaggar **nya upphandlingar** med olästa badges.
+  - Snabbknapp för att spara en träff direkt till anbudspipelinen från bevakningens träfflista.
   - Skicka sammanfattningsmail **dagligen eller veckovis** med alla nya relevanta upphandlingar samt länkar för att öppna bevakningen eller avregistrera den.
   - Export av träffar till **Excel (XLSX)**, CSV och JSON.
 
 - **📋 Anbudspipeline (Kanban-tavla)**:
   - Hantera anbudsprocessen: `Bevakad` ➔ `Granskas` ➔ `Beslut` ➔ `Under arbete` ➔ `Inlämnat` ➔ `Vunnen 🏆 / Förlorad ❌`.
   - Interna deadlines, ansvarig person, prioriteringar och interna anteckningar.
+  - Export av pipelinen till Excel/CSV.
 
 - **🎯 Djupgående AI-Analys & Matchningsgrad**:
   - Matchningsbetyg (0–100%) mot företagets profil, skall-krav, affärsmöjligheter, risker, vinnande anbudsstrategi och frågor till upphandlaren.
@@ -57,10 +65,10 @@ En fullstack-applikation framtagen för och av **WSP** för att söka, bevaka oc
 ## 🛠️ Teknisk Stack
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Date-fns, React-Markdown, `@supabase/supabase-js`.
-- **Backend**: Node.js, Express, `@supabase/supabase-js`, inbyggd SQLite fallback, Node-Cron, Mailtrap Email API, XLSX, Dotenv.
+- **Backend**: Node.js (≥22), Express, `@supabase/supabase-js`, inbyggd SQLite fallback (`node:sqlite`), Node-Cron, Mailtrap Email API, Multer, `pdf-parse`, `mammoth`, `adm-zip`, XLSX, Dotenv.
 - **AI / LLM**: MiniMax-M3 (Anthropic-kompatibelt API).
-- **Databas & Auth**: Supabase (PostgreSQL med RLS & Auth SSO).
-- **Datakälla**: Publications Office of the European Union – TED API v3.
+- **Databas & Auth**: Supabase (PostgreSQL med RLS & Auth SSO), med automatisk fallback till lokal SQLite om Supabase inte är konfigurerat.
+- **Datakällor**: Publications Office of the European Union – TED API v3, samt Magnit Source (konsultuppdrag).
 
 ---
 
@@ -77,7 +85,9 @@ cd ted-upphandlingsbevakare
 npm run install:all
 ```
 
-### 3. Sätt upp Supabase Databas
+### 3. Sätt upp Supabase Databas (valfritt)
+Supabase krävs för fleranvändarstöd, SSO och delad data mellan enheter. Utan konfiguration körs backend automatiskt i ett lokalt SQLite-läge (enanvändare, ingen SSO) – bra för att snabbt testa appen.
+
 1. Skapa ett gratis projekt på [supabase.com](https://supabase.com).
 2. Öppna **SQL Editor** i Supabase och kör skriptet från [`supabase/schema.sql`](supabase/schema.sql).
 3. Under **Authentication -> Providers** i Supabase kan du aktivera **Google** och **GitHub** för SSO.
