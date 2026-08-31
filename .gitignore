@@ -38,3 +38,6 @@ yarn-error.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude Code local (per-developer) settings — not shared via the repo
+.claude/settings.local.json
