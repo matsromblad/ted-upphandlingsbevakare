@@ -8,7 +8,6 @@ import {
   Loader2,
   Eye,
   CheckCheck,
-  AlertTriangle,
   AlertCircle,
   Coins,
   Globe2,
@@ -20,6 +19,7 @@ import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
 import { getDeadlineInfo } from '../utils/dateUtils';
+import { DeadlineBadge } from '../components/DeadlineBadge';
 
 interface WatchlistsViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -371,12 +371,13 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                           </>
                         )}
                         {dlInfo.hasDeadline && (
-                          <span className={`font-semibold flex items-center gap-1 ${
-                            dlInfo.isExpired ? 'text-red-600 dark:text-red-400 font-bold' : 'text-slate-600 dark:text-slate-400'
-                          }`}>
-                            {dlInfo.isExpired && <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />}
-                            {dlInfo.isExpired ? `Utgången (${dlInfo.formattedDeadline})` : `Deadline: ${dlInfo.formattedDeadline}`}
-                          </span>
+                          <DeadlineBadge
+                            info={dlInfo}
+                            variant="text"
+                            icon={dlInfo.isExpired ? 'alert-triangle' : 'none'}
+                            label={dlInfo.isExpired ? undefined : `Deadline: ${dlInfo.formattedDeadline}`}
+                            className="font-semibold"
+                          />
                         )}
                       </div>
 

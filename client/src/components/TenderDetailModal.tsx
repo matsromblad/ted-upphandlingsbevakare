@@ -4,7 +4,6 @@ import {
   Building,
   MapPin,
   Calendar,
-  Clock,
   ExternalLink,
   Bookmark,
   Sparkles,
@@ -26,8 +25,6 @@ import {
   CheckSquare,
   FileCheck2,
   FileDown,
-  Copy,
-  Check,
   Globe2,
   FolderOpen,
   UploadCloud,
@@ -42,6 +39,8 @@ import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole,
 import { api } from '../api';
 import { getDeadlineInfo, formatDeadline } from '../utils/dateUtils';
 import { UserSelectDropdown } from './UserSelectDropdown';
+import { DeadlineBadge } from './DeadlineBadge';
+import { CopyLinkButton } from './CopyLinkButton';
 
 interface TenderDetailModalProps {
   notice: Notice | null;
@@ -66,7 +65,6 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const [analyzingDocuments, setAnalyzingDocuments] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   // Document upload state (Solution A)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -117,12 +115,6 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   }, [notice, savedItem]);
 
   if (!isOpen || !notice) return null;
-
-  const handleCopyLink = (url: string) => {
-    navigator.clipboard.writeText(url);
-    setCopiedUrl(url);
-    setTimeout(() => setCopiedUrl(null), 2500);
-  };
 
   const handleSaveToPipeline = async () => {
     setSaving(true);
@@ -205,38 +197,7 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
     notice.daysRemaining
   );
 
-  const getDeadlineBadge = () => {
-    if (!deadlineInfo.hasDeadline) {
-      return (
-        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5" /> Ingen deadline
-        </span>
-      );
-    }
-
-    if (deadlineInfo.isExpired) {
-      return (
-        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950/90 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 flex items-center gap-1.5 shadow-sm">
-          <AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 flex-shrink-0" />
-          <span>Utgången ({deadlineInfo.formattedDeadline})</span>
-        </span>
-      );
-    }
-
-    if (deadlineInfo.status === 'EXPIRING_SOON') {
-      return (
-        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1.5 animate-pulse">
-          <Clock className="w-3.5 h-3.5" /> {deadlineInfo.daysRemaining} dagar kvar ({deadlineInfo.formattedDeadline})
-        </span>
-      );
-    }
-
-    return (
-      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-        <Clock className="w-3.5 h-3.5" /> {deadlineInfo.daysRemaining} dagar kvar ({deadlineInfo.formattedDeadline})
-      </span>
-    );
-  };
+  const deadlineBadgeExtraClass = deadlineInfo.isExpired ? 'shadow-sm' : deadlineInfo.status === 'EXPIRING_SOON' ? 'animate-pulse' : '';
 
   // Primary tender portal / submission link
   const tenderPortalUrl = notice.links?.submission || notice.links?.documents;
@@ -276,7 +237,7 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                     {notice.estimatedValueFormatted}
                   </span>
                 )}
-                {getDeadlineBadge()}
+                <DeadlineBadge info={deadlineInfo} hideWhenNoDeadline={false} className={deadlineBadgeExtraClass} />
               </div>
 
               <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">
@@ -499,14 +460,10 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                           <ExternalLink className="w-3.5 h-3.5" />
                           Öppna anbudsförfrågan
                         </a>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyLink(tenderPortalUrl)}
+                        <CopyLinkButton
+                          url={tenderPortalUrl}
                           className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 text-xs font-semibold transition-all"
-                          title="Kopiera länk"
-                        >
-                          {copiedUrl === tenderPortalUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                        </button>
+                        />
                       </div>
                     </div>
                   ) : (
@@ -561,14 +518,10 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                           <FileDown className="w-3.5 h-3.5" />
                           Öppna dokumentlänk
                         </a>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyLink(notice.links!.documents!)}
+                        <CopyLinkButton
+                          url={notice.links.documents}
                           className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-slate-700 text-xs font-semibold transition-all"
-                          title="Kopiera länk"
-                        >
-                          {copiedUrl === notice.links.documents ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                        </button>
+                        />
                       </div>
                     </div>
                   ) : (

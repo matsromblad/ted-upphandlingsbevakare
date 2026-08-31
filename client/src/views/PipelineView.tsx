@@ -3,8 +3,6 @@ import {
   Kanban,
   Download,
   Building,
-  Clock,
-  AlertTriangle,
   Sparkles,
   Trash2,
   Tag,
@@ -21,6 +19,7 @@ import {
 import { SavedTender, TenderStatus, Notice } from '../types';
 import { api } from '../api';
 import { getDeadlineInfo } from '../utils/dateUtils';
+import { DeadlineBadge } from '../components/DeadlineBadge';
 
 interface PipelineViewProps {
   tenders: SavedTender[];
@@ -343,16 +342,11 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
                               ? 'border-red-100 dark:border-red-900/40 text-red-600 dark:text-red-400'
                               : 'border-slate-100 dark:border-slate-800 text-slate-500'
                           }`}>
-                            <span className={`flex items-center gap-1 ${dlInfo.isExpired ? 'font-bold text-red-600 dark:text-red-400' : ''}`}>
-                              {dlInfo.isExpired ? (
-                                <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
-                              ) : (
-                                <Clock className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                              )}
-                              {dlInfo.isExpired
-                                ? `Utgången (${dlInfo.formattedDeadline})`
-                                : dlInfo.formattedDeadline}
-                            </span>
+                            <DeadlineBadge
+                              info={dlInfo}
+                              variant="text"
+                              label={dlInfo.isExpired ? undefined : dlInfo.formattedDeadline}
+                            />
                             {tender.assigned_to && (
                               <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium">
                                 <User className="w-3 h-3 text-slate-400" />
