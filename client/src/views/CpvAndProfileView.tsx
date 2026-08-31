@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Building2,
   Tag,
@@ -41,6 +41,7 @@ export const CpvAndProfileView: React.FC = () => {
   const [preferredCpv, setPreferredCpv] = useState<string[]>([]);
   const [preferredCountries, setPreferredCountries] = useState<string[]>(['SWE']);
   const [manualCpvInput, setManualCpvInput] = useState('');
+  const cpvSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadData();
@@ -100,13 +101,22 @@ export const CpvAndProfileView: React.FC = () => {
     setExpandedCats(prev => ({ ...prev, [code]: !prev[code] }));
   };
 
-  const handleCpvSearch = async (val: string) => {
+  const handleCpvSearch = (val: string) => {
     setCpvSearch(val);
-    const res = await api.getCpvCategories(val);
-    if (res.success && res.categories) {
-      setCategories(res.categories);
-    }
+    if (cpvSearchDebounceRef.current) clearTimeout(cpvSearchDebounceRef.current);
+    cpvSearchDebounceRef.current = setTimeout(async () => {
+      const res = await api.getCpvCategories(val);
+      if (res.success && res.categories) {
+        setCategories(res.categories);
+      }
+    }, 300);
   };
+
+  useEffect(() => {
+    return () => {
+      if (cpvSearchDebounceRef.current) clearTimeout(cpvSearchDebounceRef.current);
+    };
+  }, []);
 
   // Toggle individual CPV code in profile
   const toggleCpv = (code: string) => {

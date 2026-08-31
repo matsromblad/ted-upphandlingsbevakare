@@ -33,7 +33,7 @@ async function getHeaders(customHeaders: Record<string, string> = {}): Promise<H
 
 export const api = {
   // Search TED
-  searchTed: async (filters: NoticeFilters, page = 1, limit = 20): Promise<{
+  searchTed: async (filters: NoticeFilters, page = 1, limit = 20, signal?: AbortSignal): Promise<{
     success: boolean;
     totalCount: number;
     page: number;
@@ -47,7 +47,8 @@ export const api = {
     const res = await fetch(`${API_BASE}/ted/search`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ filters, page, limit })
+      body: JSON.stringify({ filters, page, limit }),
+      signal
     });
     return res.json();
   },

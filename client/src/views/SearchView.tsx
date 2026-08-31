@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Sparkles,
@@ -34,6 +34,7 @@ import { api } from '../api';
 import { CpvSelectorModal } from '../components/CpvSelectorModal';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
 import { getDeadlineInfo } from '../utils/dateUtils';
+import { DeadlineBadge } from '../components/DeadlineBadge';
 
 interface SearchViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -84,6 +85,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   // Modals
   const [isCpvModalOpen, setIsCpvModalOpen] = useState(false);
   const [isWatchlistModalOpen, setIsWatchlistModalOpen] = useState(false);
+
+  // Tracks the in-flight search request so a fast filter change can cancel a slower,
+  // now-stale request instead of letting it overwrite newer results when it resolves.
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   const countryOptions = [
     { code: 'SWE', label: 'Sverige' },
@@ -137,11 +142,18 @@ export const SearchView: React.FC<SearchViewProps> = ({
   };
 
   const executeSearch = async (targetPage = 1, customFilters?: NoticeFilters) => {
+    // Cancel any still-in-flight search so its (now stale) response can't land after this
+    // newer one and overwrite fresher results.
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     setLoading(true);
     setError(null);
     try {
       const filters = customFilters || getActiveFilters();
-      const res = await api.searchTed(filters, targetPage, 20);
+      const res = await api.searchTed(filters, targetPage, 20, controller.signal);
+      if (controller.signal.aborted) return;
 
       if (res.success) {
         setNotices(res.notices || []);
@@ -153,9 +165,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
         setError(res.error || 'Sökningen misslyckades.');
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       setError(err.message || 'Ett fel uppstod vid hämtning av upphandlingar.');
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
@@ -723,26 +736,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
                           {notice.estimatedValueFormatted}
                         </span>
                       )}
-                      {dlInfo.hasDeadline && (
-                        <span
-                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                            dlInfo.isExpired
-                              ? 'bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-300 dark:border-red-700 font-bold'
-                              : dlInfo.status === 'EXPIRING_SOON'
-                              ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold border border-amber-300'
-                              : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          }`}
-                        >
-                          {dlInfo.isExpired ? (
-                            <AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                          ) : (
-                            <Clock className="w-3 h-3" />
-                          )}
-                          {dlInfo.isExpired
-                            ? `Utgången (${dlInfo.formattedDeadline})`
-                            : `${dlInfo.daysRemaining}d kvar`}
-                        </span>
-                      )}
+                      <DeadlineBadge
+                        info={dlInfo}
+                        icon={dlInfo.isExpired ? 'alert-circle' : 'clock'}
+                        label={dlInfo.isExpired ? undefined : `${dlInfo.daysRemaining}d kvar`}
+                        className="text-[11px]"
+                      />
                     </div>
                   </div>
 
@@ -1000,18 +999,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       </td>
                       <td className="p-3.5 whitespace-nowrap">
                         {dlInfo.hasDeadline ? (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
-                              dlInfo.isExpired
-                                ? 'bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 font-bold'
-                                : dlInfo.status === 'EXPIRING_SOON'
-                                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 font-bold'
-                                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                            }`}
-                          >
-                            {dlInfo.isExpired && <AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" />}
-                            {dlInfo.isExpired ? `Utgången (${dlInfo.formattedDeadline})` : dlInfo.formattedDeadline}
-                          </span>
+                          <DeadlineBadge
+                            info={dlInfo}
+                            icon={dlInfo.isExpired ? 'alert-circle' : 'none'}
+                            label={dlInfo.isExpired ? undefined : dlInfo.formattedDeadline}
+                          />
                         ) : (
                           <span className="text-slate-400">-</span>
                         )}
