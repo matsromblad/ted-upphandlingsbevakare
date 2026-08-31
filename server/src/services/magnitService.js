@@ -4,9 +4,27 @@ const MAGNIT_API_BASE = 'https://app-openmarketgateway-prod.azurewebsites.net/ap
 const MAGNIT_PORTAL_BASE = 'https://magnit-source.magnitglobal.com/browse/job-details';
 
 let cachedJobs = [];
+// Map<jobId, { data, cachedAt }> — bounded and TTL'd below so it can't grow unbounded
+// across the process lifetime as new job IDs are seen.
 let cachedDetailsMap = new Map();
 let lastFetchedAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+const DETAILS_CACHE_TTL_MS = 30 * 60 * 1000; // job details change rarely; cache longer than the list
+const DETAILS_CACHE_MAX_SIZE = 500;
+
+function pruneDetailsCache() {
+  const now = Date.now();
+  for (const [id, entry] of cachedDetailsMap) {
+    if (now - entry.cachedAt > DETAILS_CACHE_TTL_MS) {
+      cachedDetailsMap.delete(id);
+    }
+  }
+  // Evict oldest entries (Map preserves insertion order) if still over the cap
+  while (cachedDetailsMap.size > DETAILS_CACHE_MAX_SIZE) {
+    const oldestKey = cachedDetailsMap.keys().next().value;
+    cachedDetailsMap.delete(oldestKey);
+  }
+}
 
 function stripHtml(html = '') {
   if (!html) return '';
@@ -25,8 +43,9 @@ function stripHtml(html = '') {
 }
 
 export async function fetchMagnitJobDetails(jobId) {
-  if (cachedDetailsMap.has(jobId)) {
-    return cachedDetailsMap.get(jobId);
+  const cached = cachedDetailsMap.get(jobId);
+  if (cached && (Date.now() - cached.cachedAt) < DETAILS_CACHE_TTL_MS) {
+    return cached.data;
   }
 
   try {
@@ -34,14 +53,17 @@ export async function fetchMagnitJobDetails(jobId) {
       headers: { 'Accept': 'application/json' }
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) return cached?.data || null;
 
     const data = await res.json();
-    cachedDetailsMap.set(jobId, data);
+    // Delete-then-set so re-fetched entries move to the end for the FIFO eviction order.
+    cachedDetailsMap.delete(jobId);
+    cachedDetailsMap.set(jobId, { data, cachedAt: Date.now() });
+    pruneDetailsCache();
     return data;
   } catch (err) {
     console.error(`[Magnit Service] Failed to fetch details for ${jobId}:`, err.message);
-    return null;
+    return cached?.data || null;
   }
 }
 
@@ -225,7 +247,7 @@ export async function searchMagnitNotices(filters = {}) {
 
     const normalized = [];
     for (const j of rawJobs) {
-      const details = cachedDetailsMap.get(j.id) || null;
+      const details = cachedDetailsMap.get(j.id)?.data || null;
       const notice = normalizeMagnitJob(j, details);
       if (notice) normalized.push(notice);
     }
