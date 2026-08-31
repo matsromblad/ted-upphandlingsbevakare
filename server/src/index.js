@@ -25,7 +25,23 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+// CORS is restricted to an allowlist of known frontend origins (defaults to APP_BASE_URL, e.g.
+// the Vite dev server). Requests with no Origin header (curl, server-to-server, same-origin
+// page loads) are always allowed since browsers don't send Origin for those.
+const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.APP_BASE_URL || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsAllowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    console.warn(`[CORS] Blocked request from disallowed origin: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
+  }
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // Healthcheck
@@ -35,6 +51,14 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api', apiRoutes);
+
+// CORS rejection handler: avoid leaking a stack trace via Express's default error page
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ success: false, error: 'Origin not allowed' });
+  }
+  next(err);
+});
 
 // Serve static frontend in production if built
 const clientDistPath = path.resolve(__dirname, '..', '..', 'client', 'dist');

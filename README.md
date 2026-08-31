@@ -103,6 +103,10 @@ TED_API_URL=https://api.ted.europa.eu/v3/notices/search
 APP_BASE_URL=http://localhost:5173
 API_BASE_URL=http://localhost:3001
 
+# Kommaseparerad lista med tillåtna frontend-origins för CORS (valfritt, faller annars
+# tillbaka till APP_BASE_URL)
+# CORS_ALLOWED_ORIGINS=http://localhost:5173
+
 # Mailtrap Email API för bevakningar
 MAILTRAP_API_URL=https://send.api.mailtrap.io/api/send
 MAILTRAP_API_TOKEN=<YOUR_API_TOKEN>
@@ -110,7 +114,10 @@ MAILTRAP_FROM_EMAIL=hello@demomailtrap.co
 MAILTRAP_FROM_NAME=Mailtrap Test
 MAILTRAP_CATEGORY=Watchlist Digest
 
-# Supabase
+# Supabase. SUPABASE_ANON_KEY används av backend för att skapa en per-request klient
+# scopad till den inloggade användarens JWT, så att Row Level Security faktiskt gäller
+# för användarinitierade anrop (SUPABASE_SERVICE_ROLE_KEY kringgår alltid RLS och
+# används bara för systemoperationer som bakgrundspollning och konto-signup).
 SUPABASE_URL=https://ditt-projekt.supabase.co
 SUPABASE_ANON_KEY=din_anon_key
 SUPABASE_SERVICE_ROLE_KEY=din_service_role_key

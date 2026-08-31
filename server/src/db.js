@@ -243,7 +243,9 @@ export const isCloudUser = (userId) => Boolean(isSupabaseConfigured && userId &&
 // WATCHLISTS DAO (Supabase + Local SQLite)
 // ==============================================================================
 export const watchlistDao = {
-  seedDefaults: async (userId) => {
+  // client defaults to supabaseAdmin for system callers (e.g. signup, before a user session
+  // exists); routes pass req.db so inserts run under the caller's own RLS-checked identity.
+  seedDefaults: async (userId, client = supabaseAdmin) => {
     const createdList = [];
     for (const def of DEFAULT_WATCHLISTS) {
       const id = 'wl-' + randomUUID().substring(0, 8);
@@ -258,22 +260,22 @@ export const watchlistDao = {
         interval_minutes: def.interval_minutes || 60,
         email_frequency: def.email_frequency || 'daily'
       };
-      const created = await watchlistDao.create(item);
+      const created = await watchlistDao.create(item, client);
       createdList.push(created);
     }
     return createdList;
   },
 
-  getAll: async (userId) => {
+  getAll: async (userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('watchlists')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       if (!data || data.length === 0) {
-        return watchlistDao.seedDefaults(userId);
+        return watchlistDao.seedDefaults(userId, client);
       }
       return normalizeWatchlistCollection(data || []);
     }
@@ -299,11 +301,9 @@ export const watchlistDao = {
     return normalizeWatchlistCollection(rows);
   },
 
-  getById: async (id, userId) => {
+  getById: async (id, userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      let query = supabaseAdmin.from('watchlists').select('*').eq('id', id);
-      if (userId) query = query.eq('user_id', userId);
-      const { data } = await query.single();
+      const { data } = await client.from('watchlists').select('*').eq('id', id).eq('user_id', userId).single();
       return normalizeWatchlistRecord(data);
     }
     if (userId) {
@@ -333,7 +333,7 @@ export const watchlistDao = {
     return normalizeWatchlistRecord(row);
   },
 
-  create: async (item) => {
+  create: async (item, client = supabaseAdmin) => {
     if (isCloudUser(item.user_id)) {
       const payload = {
         id: item.id,
@@ -347,7 +347,7 @@ export const watchlistDao = {
         unsubscribe_token: item.unsubscribe_token || randomUUID(),
         last_email_sent_at: item.last_email_sent_at || null
       };
-      const { data, error } = await supabaseAdmin.from('watchlists').insert(payload).select().single();
+      const { data, error } = await client.from('watchlists').insert(payload).select().single();
       if (error) throw error;
       return normalizeWatchlistRecord(data);
     }
@@ -373,7 +373,7 @@ export const watchlistDao = {
     return watchlistDao.getById(item.id, item.user_id);
   },
 
-  update: async (id, userId, item) => {
+  update: async (id, userId, item, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
       const payload = {
         name: item.name,
@@ -383,7 +383,7 @@ export const watchlistDao = {
         interval_minutes: item.interval_minutes,
         email_frequency: deriveWatchlistEmailFrequency(item)
       };
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('watchlists')
         .update(payload)
         .eq('id', id)
@@ -474,10 +474,10 @@ export const watchlistDao = {
     return normalizeWatchlistRecord(row);
   },
 
-  delete: async (id, userId) => {
+  delete: async (id, userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      await supabaseAdmin.from('watchlist_hits').delete().eq('watchlist_id', id).eq('user_id', userId);
-      await supabaseAdmin.from('watchlists').delete().eq('id', id).eq('user_id', userId);
+      await client.from('watchlist_hits').delete().eq('watchlist_id', id).eq('user_id', userId);
+      await client.from('watchlists').delete().eq('id', id).eq('user_id', userId);
       return;
     }
 
@@ -490,9 +490,9 @@ export const watchlistDao = {
 // WATCHLIST HITS DAO
 // ==============================================================================
 export const hitsDao = {
-  getByWatchlistId: async (watchlistId, userId, limit = 100) => {
+  getByWatchlistId: async (watchlistId, userId, limit = 100, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('watchlist_hits')
         .select('*')
         .eq('watchlist_id', watchlistId)
@@ -514,9 +514,9 @@ export const hitsDao = {
     `).all(watchlistId, userId, limit);
   },
 
-  getAllRecentHits: async (userId, limit = 100) => {
+  getAllRecentHits: async (userId, limit = 100, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('watchlist_hits')
         .select('*, watchlists(name)')
         .eq('user_id', userId)
@@ -598,20 +598,20 @@ export const hitsDao = {
     }
   },
 
-  markAsRead: async (id, userId) => {
+  markAsRead: async (id, userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data: hit } = await supabaseAdmin
+      const { data: hit } = await client
         .from('watchlist_hits')
         .select('watchlist_id, is_read')
         .eq('id', id)
         .eq('user_id', userId)
         .single();
-      
+
       if (hit && !hit.is_read) {
-        await supabaseAdmin.from('watchlist_hits').update({ is_read: true }).eq('id', id).eq('user_id', userId);
-        const { data: wl } = await supabaseAdmin.from('watchlists').select('new_count').eq('id', hit.watchlist_id).single();
+        await client.from('watchlist_hits').update({ is_read: true }).eq('id', id).eq('user_id', userId);
+        const { data: wl } = await client.from('watchlists').select('new_count').eq('id', hit.watchlist_id).single();
         if (wl) {
-          await supabaseAdmin.from('watchlists').update({ new_count: Math.max(0, (wl.new_count || 1) - 1) }).eq('id', hit.watchlist_id);
+          await client.from('watchlists').update({ new_count: Math.max(0, (wl.new_count || 1) - 1) }).eq('id', hit.watchlist_id);
         }
       }
       return;
@@ -624,14 +624,14 @@ export const hitsDao = {
     }
   },
 
-  markAllAsRead: async (userId, watchlistId) => {
+  markAllAsRead: async (userId, watchlistId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      let query = supabaseAdmin.from('watchlist_hits').update({ is_read: true }).eq('user_id', userId);
+      let query = client.from('watchlist_hits').update({ is_read: true }).eq('user_id', userId);
       if (watchlistId) {
         query = query.eq('watchlist_id', watchlistId);
-        await supabaseAdmin.from('watchlists').update({ new_count: 0 }).eq('id', watchlistId).eq('user_id', userId);
+        await client.from('watchlists').update({ new_count: 0 }).eq('id', watchlistId).eq('user_id', userId);
       } else {
-        await supabaseAdmin.from('watchlists').update({ new_count: 0 }).eq('user_id', userId);
+        await client.from('watchlists').update({ new_count: 0 }).eq('user_id', userId);
       }
       await query;
       return;
@@ -673,9 +673,9 @@ export const hitsDao = {
     `).run(emailedAt, userId, ...hitIds);
   },
 
-  getUnreadCount: async (userId) => {
+  getUnreadCount: async (userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { count } = await supabaseAdmin
+      const { count } = await client
         .from('watchlist_hits')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -692,9 +692,9 @@ export const hitsDao = {
 // SAVED PIPELINE TENDERS DAO
 // ==============================================================================
 export const pipelineDao = {
-  getAll: async (userId) => {
+  getAll: async (userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('saved_tenders')
         .select('*')
         .eq('user_id', userId)
@@ -711,9 +711,9 @@ export const pipelineDao = {
     return localDb.prepare('SELECT * FROM saved_tenders WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
   },
 
-  getByNoticeId: async (noticeId, userId) => {
+  getByNoticeId: async (noticeId, userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data } = await supabaseAdmin
+      const { data } = await client
         .from('saved_tenders')
         .select('*')
         .eq('notice_id', noticeId)
@@ -731,7 +731,7 @@ export const pipelineDao = {
     return localDb.prepare('SELECT * FROM saved_tenders WHERE notice_id = ? AND user_id = ?').get(noticeId, userId);
   },
 
-  save: async (item) => {
+  save: async (item, client = supabaseAdmin) => {
     const userId = item.user_id;
 
     if (isCloudUser(userId)) {
@@ -754,14 +754,14 @@ export const pipelineDao = {
         updated_at: new Date().toISOString()
       };
 
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('saved_tenders')
         .upsert(payload, { onConflict: 'user_id, notice_id' })
         .select()
         .single();
 
       if (error) throw error;
-      await supabaseAdmin.from('watchlist_hits').update({ is_saved: true }).eq('notice_id', item.notice_id).eq('user_id', userId);
+      await client.from('watchlist_hits').update({ is_saved: true }).eq('notice_id', item.notice_id).eq('user_id', userId);
       return {
         ...data,
         tags_json: JSON.stringify(data.tags_json),
@@ -808,9 +808,9 @@ export const pipelineDao = {
     }
   },
 
-  updateStatus: async (id, userId, status) => {
+  updateStatus: async (id, userId, status, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('saved_tenders')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', id)
@@ -829,9 +829,9 @@ export const pipelineDao = {
     return localDb.prepare('SELECT * FROM saved_tenders WHERE id = ? AND user_id = ?').get(id, userId);
   },
 
-  updateNotes: async (id, userId, notes, internalDeadline, priority, assignedTo, tagsJson) => {
+  updateNotes: async (id, userId, notes, internalDeadline, priority, assignedTo, tagsJson, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('saved_tenders')
         .update({
           notes,
@@ -858,9 +858,9 @@ export const pipelineDao = {
     return localDb.prepare('SELECT * FROM saved_tenders WHERE id = ? AND user_id = ?').get(id, userId);
   },
 
-  updateAiAnalysis: async (noticeId, userId, aiJson) => {
+  updateAiAnalysis: async (noticeId, userId, aiJson, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      await supabaseAdmin
+      await client
         .from('saved_tenders')
         .update({
           ai_analysis_json: typeof aiJson === 'string' ? JSON.parse(aiJson) : aiJson,
@@ -878,13 +878,13 @@ export const pipelineDao = {
     `).run(aiJson, noticeId, userId);
   },
 
-  delete: async (id, userId) => {
+  delete: async (id, userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data: item } = await supabaseAdmin.from('saved_tenders').select('notice_id').eq('id', id).eq('user_id', userId).single();
+      const { data: item } = await client.from('saved_tenders').select('notice_id').eq('id', id).eq('user_id', userId).single();
       if (item) {
-        await supabaseAdmin.from('watchlist_hits').update({ is_saved: false }).eq('notice_id', item.notice_id).eq('user_id', userId);
+        await client.from('watchlist_hits').update({ is_saved: false }).eq('notice_id', item.notice_id).eq('user_id', userId);
       }
-      await supabaseAdmin.from('saved_tenders').delete().eq('id', id).eq('user_id', userId);
+      await client.from('saved_tenders').delete().eq('id', id).eq('user_id', userId);
       return;
     }
 
@@ -900,9 +900,9 @@ export const pipelineDao = {
 // COMPANY PROFILE DAO
 // ==============================================================================
 export const profileDao = {
-  get: async (userId) => {
+  get: async (userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).single();
+      const { data } = await client.from('profiles').select('*').eq('id', userId).single();
       if (!data || !data.company_name || data.company_name === 'Mitt Företag AB') {
         return {
           id: userId,
@@ -937,7 +937,7 @@ export const profileDao = {
     };
   },
 
-  update: async (userId, data) => {
+  update: async (userId, data, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
       const payload = {
         company_name: data.name,
@@ -948,13 +948,13 @@ export const profileDao = {
         min_value: data.min_value || 0,
         updated_at: new Date().toISOString()
       };
-      const { data: updated, error } = await supabaseAdmin
+      const { data: updated, error } = await client
         .from('profiles')
         .upsert({ id: userId, ...payload })
         .select()
         .single();
       if (error) throw error;
-      return profileDao.get(userId);
+      return profileDao.get(userId, client);
     }
 
     localDb.prepare(`
@@ -1056,9 +1056,9 @@ export const profileDao = {
 // CHAT MESSAGES DAO
 // ==============================================================================
 export const chatDao = {
-  getMessages: async (userId, sessionId = 'default', limit = 50) => {
+  getMessages: async (userId, sessionId = 'default', limit = 50, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await client
         .from('chat_messages')
         .select('*')
         .eq('user_id', userId)
@@ -1077,9 +1077,9 @@ export const chatDao = {
     `).all(userId, sessionId, limit);
   },
 
-  addMessage: async (item) => {
+  addMessage: async (item, client = supabaseAdmin) => {
     if (isCloudUser(item.user_id)) {
-      await supabaseAdmin.from('chat_messages').insert({
+      await client.from('chat_messages').insert({
         id: item.id,
         user_id: item.user_id,
         session_id: item.session_id,
@@ -1096,9 +1096,9 @@ export const chatDao = {
     `).run(item.id, item.user_id, item.session_id, item.role, item.content, item.context_notice_id);
   },
 
-  clearSession: async (userId, sessionId = 'default') => {
+  clearSession: async (userId, sessionId = 'default', client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
-      await supabaseAdmin.from('chat_messages').delete().eq('user_id', userId).eq('session_id', sessionId);
+      await client.from('chat_messages').delete().eq('user_id', userId).eq('session_id', sessionId);
       return;
     }
 

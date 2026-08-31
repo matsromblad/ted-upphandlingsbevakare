@@ -10,7 +10,7 @@ import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerServi
 import { buildWatchlistManageUrl } from '../services/emailService.js';
 import { CPV_CATEGORIES, searchCpv } from '../services/cpvData.js';
 import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao } from '../db.js';
-import { requireAuth, isSupabaseConfigured, isPlaceholder } from '../supabase.js';
+import { requireAuth, isSupabaseConfigured, isPlaceholder, supabaseAdmin } from '../supabase.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -255,18 +255,18 @@ router.post('/ai/analyze', requireAuth, async (req, res) => {
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
     let companyProfile = null;
     try {
-      companyProfile = await profileDao.get(userId);
+      companyProfile = await profileDao.get(userId, req.db);
     } catch (e) {
       console.warn('[AI Analyze] Failed to load company profile, using default:', e.message);
     }
 
     const analysis = await analyzeTender(notice, companyProfile);
-    
+
     // If notice is already in pipeline, save analysis
     const noticeId = notice.id || notice.publicationNumber;
     if (noticeId) {
       try {
-        await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis));
+        await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis), req.db);
       } catch (e) {
         console.warn('[AI Analyze] Failed to update pipeline with analysis:', e.message);
       }
@@ -294,7 +294,7 @@ router.post('/ai/analyze-documents', requireAuth, upload.array('files', 30), asy
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
     let companyProfile = null;
     try {
-      companyProfile = await profileDao.get(userId);
+      companyProfile = await profileDao.get(userId, req.db);
     } catch (e) {
       console.warn('[AI Analyze Documents] Failed to load company profile:', e.message);
     }
@@ -312,7 +312,7 @@ router.post('/ai/analyze-documents', requireAuth, upload.array('files', 30), asy
     const noticeId = notice.id || notice.publicationNumber;
     if (noticeId) {
       try {
-        await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis));
+        await pipelineDao.updateAiAnalysis(noticeId, userId, JSON.stringify(analysis), req.db);
       } catch (e) {
         console.warn('[AI Analyze Documents] Failed to update pipeline with analysis:', e.message);
       }
@@ -347,11 +347,11 @@ router.post('/ai/chat', requireAuth, async (req, res) => {
       role: 'user',
       content: message,
       context_notice_id: context.currentNotice?.id || null
-    });
+    }, req.db);
 
     // Get conversation history for this user
-    const history = await chatDao.getMessages(userId, sessionId, 20);
-    const companyProfile = await profileDao.get(userId);
+    const history = await chatDao.getMessages(userId, sessionId, 20, req.db);
+    const companyProfile = await profileDao.get(userId, req.db);
 
     // Call MiniMax
     const responseText = await chatWithAssistant(history, {
@@ -368,7 +368,7 @@ router.post('/ai/chat', requireAuth, async (req, res) => {
       role: 'assistant',
       content: responseText,
       context_notice_id: context.currentNotice?.id || null
-    });
+    }, req.db);
 
     res.json({
       success: true,
@@ -382,13 +382,13 @@ router.post('/ai/chat', requireAuth, async (req, res) => {
 
 router.get('/ai/chat/history', requireAuth, async (req, res) => {
   const { sessionId = 'default' } = req.query;
-  const messages = await chatDao.getMessages(req.user.id, sessionId, 50);
+  const messages = await chatDao.getMessages(req.user.id, sessionId, 50, req.db);
   res.json({ success: true, messages });
 });
 
 router.delete('/ai/chat/history', requireAuth, async (req, res) => {
   const { sessionId = 'default' } = req.query;
-  await chatDao.clearSession(req.user.id, sessionId);
+  await chatDao.clearSession(req.user.id, sessionId, req.db);
   res.json({ success: true });
 });
 
@@ -422,12 +422,12 @@ router.get('/watchlists/unsubscribe/:token', async (req, res) => {
 router.get('/watchlists', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const rawWatchlists = await watchlistDao.getAll(userId);
+    const rawWatchlists = await watchlistDao.getAll(userId, req.db);
     const watchlists = rawWatchlists.map(w => ({
       ...w,
       filters: JSON.parse(w.filters_json || '{}')
     }));
-    const unreadCount = await hitsDao.getUnreadCount(userId);
+    const unreadCount = await hitsDao.getUnreadCount(userId, req.db);
     res.json({ success: true, watchlists, unreadCount });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -456,7 +456,7 @@ router.post('/watchlists', requireAuth, async (req, res) => {
       interval_minutes: 60,
       email_frequency: resolvedEmailFrequency,
       unsubscribe_token: uuidv4()
-    });
+    }, req.db);
 
     // Trigger initial run immediately in background
     runWatchlist(created).catch(console.error);
@@ -471,7 +471,7 @@ router.put('/watchlists/:id', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const { name, filters = {}, active, emailFrequency } = req.body;
-    const existing = await watchlistDao.getById(req.params.id, userId);
+    const existing = await watchlistDao.getById(req.params.id, userId, req.db);
     if (!existing) {
       return res.status(404).json({ error: 'Bevakning hittades inte' });
     }
@@ -487,7 +487,7 @@ router.put('/watchlists/:id', requireAuth, async (req, res) => {
       active: active !== undefined ? (active ? 1 : 0) : existing.active,
       interval_minutes: existing.interval_minutes,
       email_frequency: resolveEmailFrequency(emailFrequency, existing.email_frequency)
-    });
+    }, req.db);
 
     res.json({ success: true, watchlist: { ...updated, filters } });
   } catch (error) {
@@ -497,7 +497,7 @@ router.put('/watchlists/:id', requireAuth, async (req, res) => {
 
 router.delete('/watchlists/:id', requireAuth, async (req, res) => {
   try {
-    await watchlistDao.delete(req.params.id, req.user.id);
+    await watchlistDao.delete(req.params.id, req.user.id, req.db);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -506,7 +506,7 @@ router.delete('/watchlists/:id', requireAuth, async (req, res) => {
 
 router.post('/watchlists/:id/run', requireAuth, async (req, res) => {
   try {
-    const watchlist = await watchlistDao.getById(req.params.id, req.user.id);
+    const watchlist = await watchlistDao.getById(req.params.id, req.user.id, req.db);
     if (!watchlist) {
       return res.status(404).json({ error: 'Bevakning hittades inte' });
     }
@@ -528,7 +528,7 @@ router.post('/watchlists/run-all', requireAuth, async (req, res) => {
 
 router.get('/watchlists/:id/hits', requireAuth, async (req, res) => {
   try {
-    const rawHits = await hitsDao.getByWatchlistId(req.params.id, req.user.id);
+    const rawHits = await hitsDao.getByWatchlistId(req.params.id, req.user.id, 100, req.db);
     const hits = rawHits.map(h => ({
       ...h,
       notice: JSON.parse(h.notice_data_json || '{}')
@@ -542,7 +542,7 @@ router.get('/watchlists/:id/hits', requireAuth, async (req, res) => {
 router.get('/watchlists-hits/recent', requireAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
-    const rawHits = await hitsDao.getAllRecentHits(req.user.id, limit);
+    const rawHits = await hitsDao.getAllRecentHits(req.user.id, limit, req.db);
     const hits = rawHits.map(h => ({
       ...h,
       notice: JSON.parse(h.notice_data_json || '{}')
@@ -555,7 +555,7 @@ router.get('/watchlists-hits/recent', requireAuth, async (req, res) => {
 
 router.put('/watchlists/hits/:id/read', requireAuth, async (req, res) => {
   try {
-    await hitsDao.markAsRead(req.params.id, req.user.id);
+    await hitsDao.markAsRead(req.params.id, req.user.id, req.db);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -565,7 +565,7 @@ router.put('/watchlists/hits/:id/read', requireAuth, async (req, res) => {
 router.put('/watchlists/hits/mark-all-read', requireAuth, async (req, res) => {
   try {
     const { watchlistId } = req.body;
-    await hitsDao.markAllAsRead(req.user.id, watchlistId);
+    await hitsDao.markAllAsRead(req.user.id, watchlistId, req.db);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -579,7 +579,7 @@ router.put('/watchlists/hits/mark-all-read', requireAuth, async (req, res) => {
 router.get('/pipeline', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    const rawTenders = await pipelineDao.getAll(userId);
+    const rawTenders = await pipelineDao.getAll(userId, req.db);
     const tenders = rawTenders.map(t => ({
       ...t,
       tags: JSON.parse(t.tags_json || '[]'),
@@ -619,7 +619,7 @@ router.post('/pipeline', requireAuth, async (req, res) => {
       assigned_to: assignedTo,
       tags_json: JSON.stringify(tags),
       notice_data_json: JSON.stringify(notice)
-    });
+    }, req.db);
 
     res.json({
       success: true,
@@ -638,7 +638,7 @@ router.post('/pipeline', requireAuth, async (req, res) => {
 router.put('/pipeline/:id/status', requireAuth, async (req, res) => {
   try {
     const { status } = req.body;
-    const updated = await pipelineDao.updateStatus(req.params.id, req.user.id, status);
+    const updated = await pipelineDao.updateStatus(req.params.id, req.user.id, status, req.db);
     res.json({ success: true, tender: updated });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -655,7 +655,8 @@ router.put('/pipeline/:id/details', requireAuth, async (req, res) => {
       internalDeadline,
       priority,
       assignedTo,
-      JSON.stringify(tags)
+      JSON.stringify(tags),
+      req.db
     );
     res.json({ success: true, tender: updated });
   } catch (err) {
@@ -665,7 +666,7 @@ router.put('/pipeline/:id/details', requireAuth, async (req, res) => {
 
 router.delete('/pipeline/:id', requireAuth, async (req, res) => {
   try {
-    await pipelineDao.delete(req.params.id, req.user.id);
+    await pipelineDao.delete(req.params.id, req.user.id, req.db);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -693,7 +694,7 @@ router.get('/users/active', requireAuth, async (req, res) => {
 
 router.get('/profile', requireAuth, async (req, res) => {
   try {
-    const profile = await profileDao.get(req.user.id);
+    const profile = await profileDao.get(req.user.id, req.db);
     res.json({ success: true, profile });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -710,7 +711,7 @@ router.put('/profile', requireAuth, async (req, res) => {
       preferred_cpv,
       preferred_countries,
       min_value: parseInt(min_value) || 0
-    });
+    }, req.db);
     res.json({ success: true, profile: updated });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -728,7 +729,7 @@ router.get('/export/:type', requireAuth, async (req, res) => {
 
   let data = [];
   if (type === 'pipeline') {
-    const raw = await pipelineDao.getAll(userId);
+    const raw = await pipelineDao.getAll(userId, req.db);
     data = raw.map(t => {
       const notice = JSON.parse(t.notice_data_json || '{}');
       return {
@@ -750,7 +751,7 @@ router.get('/export/:type', requireAuth, async (req, res) => {
       };
     });
   } else if (type === 'hits') {
-    const raw = await hitsDao.getAllRecentHits(userId, 500);
+    const raw = await hitsDao.getAllRecentHits(userId, 500, req.db);
     data = raw.map(h => {
       const notice = JSON.parse(h.notice_data_json || '{}');
       return {
