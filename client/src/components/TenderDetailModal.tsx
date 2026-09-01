@@ -33,7 +33,10 @@ import {
   FileCode,
   Trash2,
   Paperclip,
-  Layers
+  Layers,
+  Share2,
+  Printer,
+  Download
 } from 'lucide-react';
 import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole, ParsedDocument } from '../types';
 import { api } from '../api';
@@ -42,6 +45,9 @@ import { UserSelectDropdown } from './UserSelectDropdown';
 import { DeadlineBadge } from './DeadlineBadge';
 import { CopyLinkButton } from './CopyLinkButton';
 import { showToast } from './Toast';
+import { exportAnalysisToDocx } from '../utils/exportDocx';
+import { exportAnalysisToPdf } from '../utils/exportPdf';
+import { ShareAnalysisModal } from './ShareAnalysisModal';
 
 interface TenderDetailModalProps {
   notice: Notice | null;
@@ -66,6 +72,8 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const [analyzingDocuments, setAnalyzingDocuments] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Document upload state (Solution A)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -117,6 +125,23 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
   if (!isOpen || !notice) return null;
 
+  const handleExportDocx = async () => {
+    if (!notice || !aiAnalysis) return;
+    setIsExportingDocx(true);
+    try {
+      await exportAnalysisToDocx(notice, aiAnalysis);
+    } catch (e) {
+      console.error('Failed to export DOCX:', e);
+      alert('Ett fel inträffade vid skapandet av Word-dokumentet.');
+    } finally {
+      setIsExportingDocx(false);
+    }
+  };
+
+  const handleExportPdf = () => {
+    if (!notice || !aiAnalysis) return;
+    exportAnalysisToPdf(notice, aiAnalysis);
+  };
   const handleSaveToPipeline = async () => {
     setSaving(true);
     try {
@@ -305,6 +330,38 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                 Fråga MiniMax Copilot
               </button>
+
+              {aiAnalysis && (
+                <>
+                  <button
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold transition-all shadow-sm"
+                    title="Dela AI-analysen med kollegor eller i Teams/E-post"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    Dela analys
+                  </button>
+
+                  <button
+                    onClick={handleExportDocx}
+                    disabled={isExportingDocx}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-semibold transition-all shadow-sm disabled:opacity-60"
+                    title="Ladda ner professionell Word (.docx)-rapport"
+                  >
+                    {isExportingDocx ? <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /> : <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                    Word (.docx)
+                  </button>
+
+                  <button
+                    onClick={handleExportPdf}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-all shadow-sm"
+                    title="Exportera eller skriv ut som PDF"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+                    PDF
+                  </button>
+                </>
+              )}
             </div>
 
             {/* External Links & Direct Actions */}
@@ -1014,14 +1071,45 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      onClick={handleRunAiAnalysis}
-                      disabled={analyzing || analyzingDocuments}
-                      className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-700 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm flex-shrink-0"
-                    >
-                      {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      Kör om snabbanalys
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setIsShareModalOpen(true)}
+                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-purple-600/20"
+                        title="Dela AI-analysen med kollegor eller i Teams/E-post"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                        Dela analys
+                      </button>
+
+                      <button
+                        onClick={handleExportDocx}
+                        disabled={isExportingDocx}
+                        className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-60"
+                        title="Ladda ner professionell Word (.docx)-rapport"
+                      >
+                        {isExportingDocx ? <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" /> : <FileText className="w-3.5 h-3.5 text-blue-600" />}
+                        Word (.docx)
+                      </button>
+
+                      <button
+                        onClick={handleExportPdf}
+                        className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                        title="Exportera eller skriv ut som PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+                        PDF
+                      </button>
+
+                      <button
+                        onClick={handleRunAiAnalysis}
+                        disabled={analyzing || analyzingDocuments}
+                        className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-sm"
+                        title="Kör om snabbanalysen"
+                      >
+                        {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />}
+                        Kör om
+                      </button>
+                    </div>
                   </div>
 
                   {/* Document Sources List if Document Grounded */}
@@ -1344,6 +1432,16 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Share Modal */}
+      {isShareModalOpen && aiAnalysis && (
+        <ShareAnalysisModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          notice={notice}
+          analysis={aiAnalysis}
+        />
+      )}
     </div>
   );
 };
