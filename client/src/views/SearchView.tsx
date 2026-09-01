@@ -104,13 +104,13 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const searchAbortRef = useRef<AbortController | null>(null);
 
   const countryOptions = [
-    { code: 'SWE', label: 'Sverige' },
-    { code: 'DNK', label: 'Danmark' },
-    { code: 'NOR', label: 'Norge' },
-    { code: 'FIN', label: 'Finland' },
-    { code: 'DEU', label: 'Tyskland' },
-    { code: 'FRA', label: 'Frankrike' },
-    { code: 'NLD', label: 'Nederländerna' }
+    { code: 'SWE', label: 'Sverige', flag: '🇸🇪' },
+    { code: 'DNK', label: 'Danmark', flag: '🇩🇰' },
+    { code: 'NOR', label: 'Norge', flag: '🇳🇴' },
+    { code: 'FIN', label: 'Finland', flag: '🇫🇮' },
+    { code: 'DEU', label: 'Tyskland', flag: '🇩🇪' },
+    { code: 'FRA', label: 'Frankrike', flag: '🇫🇷' },
+    { code: 'NLD', label: 'Nederländerna', flag: '🇳🇱' }
   ];
 
   const popularBuyers = [
@@ -886,13 +886,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   type="button"
                   key={c.code}
                   onClick={() => handleCountryToggle(c.code)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
                     isSelected
                       ? 'bg-ted-600 text-white shadow-sm'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
-                  {c.label} ({c.code})
+                  <span>{c.flag}</span>
+                  <span>{c.label}</span>
                 </button>
               );
             })}

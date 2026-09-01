@@ -146,7 +146,8 @@ VIKTIGT OM NYCKELORD, KÖPARE OCH LOGIK:
 - Om användaren nämner en specifik upphandlande organisation eller myndighet (t.ex. "Trafikverket", "Region Stockholm", "Västfastigheter", "Svenska kraftnät", "Försvarsmakten", "FMV", "Göteborgs stad", "Stockholm Vatten", "Specialfastigheter"), ska du ALLTID sätta fältet "buyer" till detta organisationsnamn (t.ex. "Trafikverket" eller "Region Stockholm").
 - Sätt ALDRIG en upphandlares namn i "titleKeyword"! I TED eForms-standard inleds titlar ofta med "Sverige – Konsulttjänster..." och upphandlarens namn finns i fältet för organisation/köpare, inte i titeln. Att sätta organisationen i titleKeyword resulterar i 0 träffar!
 - "titleKeyword" ska ENDAST användas om användaren uttryckligen ber om ett ord som MÅSTE stå i titeln (t.ex. "upphandlingar med 'ramavtal' i rubriken"). Lämna annars "titleKeyword" tomt ("").
-- Fältet "keywords" ska innehålla relevanta verksamhetsrelaterade sökord (t.ex. "bro", "vägplan", "BIM", "projektering", "miljökonsekvensbeskrivning") separerade med " OR ". Om användaren enbart frågar efter en viss myndighet (t.ex. "Trafikverket" eller "alla upphandlingar från Trafikverket"), lämna "keywords" tomt ("") eller begränsa inte med för snäva ord.
+- Om användaren nämner andra länder eller regioner (t.ex. "Danmark", "Norge", "Finland", "Tyskland", "Frankrike", "Norden", "EU"), sätt fältet "countries" till motsvarande ISO-3 koder (t.ex. ["DNK"], ["NOR"], ["FIN"], ["DEU"], ["FRA"], eller för Norden ["SWE", "DNK", "NOR", "FIN"]).
+- Vid sökning i utländska länder är CPV-koder avgörande eftersom de är universella i hela EU/EES oavsett språk. Välj alltid relevanta 8-siffriga CPV-koder så att upphandlingar på lokalt språk (t.ex. tyska, danska, finska) hittas.
 - Om sökningen berör BIM/bygg/teknik/arkitektur/samhällsbyggnad, välj relevanta CPV-koder från division 71 (t.ex. 71300000, 71240000, 71320000, 71541000) och/eller 45. Om användaren enbart söker efter en myndighet utan specifik bransch, lämna "cpv" som tom array [].
 - Om sökningen berör IT/mjukvara, välj koder från division 72 eller 48.
 
@@ -156,7 +157,7 @@ Returnera ENDAST ett giltigt JSON-objekt med följande fält (inga markdown-kodb
   "keywords": "relevanta verksamhetssökord separerade med OR (eller tom sträng '')",
   "titleKeyword": "valfritt specifikt ord i titeln eller tom sträng ''",
   "cpv": ["8-siffriga CPV-koder relevanta för området, t.ex. '71300000', '71240000' eller tom array []"],
-  "countries": ["landskoder i ISO-3, t.ex. 'SWE', 'DNK', 'NOR'"],
+  "countries": ["landskoder i ISO-3, t.ex. 'SWE', 'DNK', 'NOR', 'FIN', 'DEU'"],
   "formType": "competition | planning | result | ALL",
   "datePreset": "1d | 7d | 14d | 30d | 90d | 365d | all",
   "explanation": "Kort förklaring på svenska av hur du tolkade sökningen och vilka filter/köpare du valde.",
@@ -683,4 +684,100 @@ Returnera ENDAST ett giltigt JSON-objekt med exakt denna struktur (inga markdown
     suggestedWatchlistName: `CV-matchning: ${fallbackRoles[0] || 'Konsultuppdrag'}`
   };
 }
+
+/**
+ * Translate and summarize a foreign procurement notice into clear Swedish with key terminology explanation
+ * and submission language requirement analysis.
+ * @param {Object} notice - Normalized notice object
+ * @param {string} targetLanguage - Target language code ('sv')
+ */
+export async function translateNotice(notice, targetLanguage = 'sv') {
+  const noticeTitle = notice.title || 'Utan titel';
+  const noticeDesc = notice.description || 'Beskrivning saknas i kungörelsen';
+  const buyer = notice.buyer || 'Okänd upphandlare';
+  const country = notice.country || 'SWE';
+  const city = notice.city || '';
+  const cpvs = notice.cpvDetails?.map(c => `${c.code} (${c.label})`).join(', ') || notice.cpvList?.join(', ') || 'Ej specificerat';
+  const estimatedValue = notice.estimatedValue || 'Ej angivet';
+  const deadline = notice.deadline || 'Ej angiven';
+  const portal = notice.portalName || notice.links?.portalName || 'Upphandlingsportal';
+
+  const systemPrompt = `Du är en certifierad nordisk och europeisk anbudsspecialist och auktoriserad facköversättare med spetskompetens inom offentlig upphandling (LOU/LUF/EU-direktiv) och tekniska konsulttjänster (samhällsbyggnad, teknik, IT, arkitektur och anläggning).
+
+DITT UPPDRAG:
+Översätt och analysera denna utländska upphandlingskungörelse till professionell, flytande och precis svenska.
+
+Instruktioner för översättning och analys:
+1. "translatedTitle": Översätt titeln till naturlig svensk branschterminologi (t.ex. "Byggherrerådgivning och teknisk konsultation för...", "Projektering av järnvägsanläggning...", etc.).
+2. "translatedDescription": Översätt beskrivningen till tydlig och korrekt svenska. Behåll alla tekniska parametrar, mått och datum exakt.
+3. "executiveSummary": En punktlista (3-5 punkter) på ren svenska som ger en snabb "Executive Summary":
+   - Vad upphandlingen avser (kärnuppdrag och omfattning)
+   - Eftersökta kompetenser, roller eller leveranser
+   - Kontraktstyp, uppskattat värde och löptid (om det framgår)
+   - Geografisk placering och beställare
+4. "detectedLanguage": Språknamn på svenska med passande flaggemoji (t.ex. "Danska 🇩🇰", "Tyska 🇩🇪", "Finska 🇫🇮", "Norska 🇳🇴", "Franska 🇫🇷", "Engelska 🇬🇧", "Nederländska 🇳🇱", "Polska 🇵🇱", etc.).
+5. "languageCode": 2-3 bokstävers språkkod (t.ex. "da", "de", "fi", "no", "fr", "en", "nl", "pl").
+6. "submissionLanguageNote": En praktisk anvisning om anbudsspråk. Identifiera vilket språk förfrågningsunderlag och anbudsinlämning normalt kräver i det aktuella landet (t.ex. "OBS! Förfrågningsunderlag och anbud krävs normalt på tyska enligt tysk upphandlingslagstiftning (VgV/VOB). Kontrollera i underlaget om internationella anbud på engelska godkänns.").
+7. "keyTerms": En lista med 2-6 facktermer eller förkortningar från originaltexten (t.ex. HOAI, ABR 18, Bygherrerådgivning, Leistungsphase, NS 8401, ESPD/ESAP, KSE 2013) med svensk översättning och en kort pedagogisk förklaring.
+
+Returnera ENDAST ett giltigt JSON-objekt med följande format (inga markdown-kodblock, endast ren JSON):
+{
+  "translatedTitle": "Svensk översatt titel",
+  "translatedDescription": "Svensk översatt beskrivning",
+  "executiveSummary": [
+    "Punkt 1: Uppdragets syfte och omfattning",
+    "Punkt 2: Nyckelkrav och efterfrågad kompetens",
+    "Punkt 3: Omfattning, tidslinje och plats"
+  ],
+  "detectedLanguage": "Tyska 🇩🇪",
+  "languageCode": "de",
+  "submissionLanguageNote": "Viktig information om anbudsspråk...",
+  "keyTerms": [
+    {
+      "term": "Term på originalspråk",
+      "translation": "Svensk motsvarighet",
+      "explanation": "Kort förklaring av vad begreppet innebär i det landets upphandlingspraxis"
+    }
+  ]
+}`;
+
+  const userContent = `Upphandlingsinformation att översätta och sammanfatta:
+- Ursprungligt land: ${country} (${city})
+- Beställare: ${buyer}
+- Upphandlingsportal: ${portal}
+- Originaltitel: ${noticeTitle}
+- Originalbeskrivning: ${noticeDesc}
+- CPV-koder: ${cpvs}
+- Uppskattat värde: ${estimatedValue}
+- Deadline: ${deadline}`;
+
+  const messages = [{ role: 'user', content: userContent }];
+
+  try {
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2, max_tokens: 3000 });
+    const parsed = extractJsonFromLlm(rawResult);
+    if (parsed && parsed.translatedTitle) {
+      parsed.translatedAt = new Date().toISOString();
+      return parsed;
+    }
+    return {
+      translatedTitle: parsed?.translatedTitle || noticeTitle,
+      translatedDescription: parsed?.translatedDescription || noticeDesc,
+      executiveSummary: parsed?.executiveSummary || [
+        `Upphandling från ${buyer} i ${country}.`,
+        `Branschområde: ${cpvs}.`,
+        `Sista anbudsdag: ${deadline}.`
+      ],
+      detectedLanguage: parsed?.detectedLanguage || `${country}`,
+      languageCode: parsed?.languageCode || 'unknown',
+      submissionLanguageNote: parsed?.submissionLanguageNote || `Kontrollera språkkrav för anbudsinlämning i förfrågningsunderlaget.`,
+      keyTerms: parsed?.keyTerms || [],
+      translatedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('[MiniMax] Translation failed:', error);
+    throw error;
+  }
+}
+
 

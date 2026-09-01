@@ -1,7 +1,7 @@
 import React from 'react';
-import { ExternalLink, Bookmark, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, Coins, EyeOff, Eye } from 'lucide-react';
+import { ExternalLink, Bookmark, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown, Coins, EyeOff, Eye, Sparkles } from 'lucide-react';
 import { Notice } from '../types';
-import { getDeadlineInfo } from '../utils/dateUtils';
+import { getDeadlineInfo, getCountryInfo, isForeignCountry } from '../utils/dateUtils';
 import { DeadlineBadge } from './DeadlineBadge';
 
 type SortField = 'id' | 'title' | 'buyer' | 'value' | 'location' | 'publicationDate' | 'deadline';
@@ -134,6 +134,8 @@ export const NoticeTable: React.FC<NoticeTableProps> = ({
               const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
               const tenderPortalUrl = notice.links?.submission || notice.links?.documents;
               const unread = isRowUnread ? isRowUnread(notice) : false;
+              const countryInfo = getCountryInfo(notice.country);
+              const isForeign = notice.isForeign || isForeignCountry(notice.country);
 
               return (
                 <tr
@@ -166,12 +168,20 @@ export const NoticeTable: React.FC<NoticeTableProps> = ({
                   <td className="p-3.5 max-w-xs">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className={`font-bold line-clamp-1 ${hidden ? 'text-slate-500 dark:text-slate-400 font-normal italic' : 'text-slate-900 dark:text-white'}`}>
-                        {notice.title}
+                        {notice.translation?.translatedTitle || notice.title}
                       </p>
+                      {notice.translation?.translatedTitle && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 flex items-center gap-0.5" title={`Original: ${notice.title}`}>
+                          <Sparkles className="w-2.5 h-2.5" />
+                          🇸🇪
+                        </span>
+                      )}
                       {renderRowBadge?.(notice)}
                     </div>
                     {!hidden && (
-                      <p className="text-slate-500 dark:text-slate-400 line-clamp-1">{notice.description}</p>
+                      <p className="text-slate-500 dark:text-slate-400 line-clamp-1">
+                        {notice.translation?.translatedDescription || notice.description}
+                      </p>
                     )}
                   </td>
                   <td className="p-3.5 font-medium text-slate-800 dark:text-slate-200 max-w-[160px] truncate">
@@ -188,7 +198,10 @@ export const NoticeTable: React.FC<NoticeTableProps> = ({
                     )}
                   </td>
                   <td className="p-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                    <div>{notice.city || notice.country}</div>
+                    <div className="flex items-center gap-1">
+                      <span>{countryInfo.flag}</span>
+                      <span>{notice.city ? `${notice.city}, ` : ''}{countryInfo.name}</span>
+                    </div>
                     {notice.portalName && !hidden && (
                       <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
                         {notice.portalName}

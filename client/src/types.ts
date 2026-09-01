@@ -9,6 +9,23 @@ export interface CpvItem {
   label: string;
 }
 
+export interface KeyTermGlossary {
+  term: string;
+  translation: string;
+  explanation: string;
+}
+
+export interface NoticeTranslation {
+  translatedTitle: string;
+  translatedDescription: string;
+  executiveSummary?: string[];
+  detectedLanguage?: string;
+  languageCode?: string;
+  submissionLanguageNote?: string;
+  keyTerms?: KeyTermGlossary[];
+  translatedAt?: string;
+}
+
 export interface Notice {
   id: string;
   publicationNumber: string;
@@ -30,6 +47,10 @@ export interface Notice {
   estimatedValueFormatted?: string;
   estimatedValueDisplay?: string;
   portalName?: string;
+  isForeign?: boolean;
+  originalLanguage?: string;
+  availableLanguages?: string[];
+  translation?: NoticeTranslation;
   links?: {
     tedHtml?: string;
     tedPdf?: string;
@@ -147,6 +168,8 @@ export interface SavedTender {
   notice?: Notice;
   ai_analysis_json?: string;
   aiAnalysis?: AIAnalysis | null;
+  translation_json?: string;
+  translation?: NoticeTranslation | null;
   saved_at: string;
   updated_at: string;
 }

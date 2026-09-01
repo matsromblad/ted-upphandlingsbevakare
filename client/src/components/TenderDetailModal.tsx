@@ -38,11 +38,14 @@ import {
   Printer,
   Download,
   Eye,
-  EyeOff
+  EyeOff,
+  Languages,
+  BookOpen,
+  RotateCcw
 } from 'lucide-react';
-import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole, ParsedDocument } from '../types';
+import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole, ParsedDocument, NoticeTranslation } from '../types';
 import { api } from '../api';
-import { getDeadlineInfo, formatDeadline } from '../utils/dateUtils';
+import { getDeadlineInfo, formatDeadline, getCountryInfo, isForeignCountry } from '../utils/dateUtils';
 import { UserSelectDropdown } from './UserSelectDropdown';
 import { DeadlineBadge } from './DeadlineBadge';
 import { CopyLinkButton } from './CopyLinkButton';
@@ -81,6 +84,12 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const [isExportingDocx, setIsExportingDocx] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
+  // Translation state
+  const [translation, setTranslation] = useState<NoticeTranslation | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const [showOriginalText, setShowOriginalText] = useState(false);
+
   // Document upload state (Solution A)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [parsedDocsList, setParsedDocsList] = useState<ParsedDocument[]>([]);
@@ -95,6 +104,8 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   const [assignedTo, setAssignedTo] = useState('');
 
   const savedItem = notice ? savedTenders.find(t => t.notice_id === notice.id) : null;
+  const countryInfo = getCountryInfo(notice?.country);
+  const isForeign = notice ? (notice.isForeign || isForeignCountry(notice.country)) : false;
 
   // Deduplicate CPV codes for display
   const uniqueCpvDetails = React.useMemo(() => {
@@ -111,6 +122,9 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   useEffect(() => {
     if (notice) {
       setAnalysisError(null);
+      setTranslationError(null);
+      setShowOriginalText(false);
+
       if (savedItem) {
         setNotes(savedItem.notes || '');
         setStatus(savedItem.status || 'INBOX');
@@ -118,6 +132,7 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
         setInternalDeadline(savedItem.internal_deadline || '');
         setAssignedTo(savedItem.assigned_to || '');
         setAiAnalysis(savedItem.aiAnalysis || null);
+        setTranslation(savedItem.translation || notice.translation || null);
       } else {
         setNotes('');
         setStatus('INBOX');
@@ -125,6 +140,7 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
         setInternalDeadline('');
         setAssignedTo('');
         setAiAnalysis(null);
+        setTranslation(notice.translation || null);
       }
     }
   }, [notice, savedItem]);
@@ -206,6 +222,30 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
     }
   };
 
+  const handleTranslateNotice = async () => {
+    if (!notice) return;
+    setTranslating(true);
+    setTranslationError(null);
+    try {
+      const res = await api.translateNotice(notice);
+      if (res.success && res.translation) {
+        setTranslation(res.translation);
+        notice.translation = res.translation;
+        setShowOriginalText(false);
+        showToast('success', 'Upphandlingen har översatts till svenska med AI.');
+      } else {
+        setTranslationError(res.error || 'Kunde inte översätta upphandlingen. Försök igen.');
+        showToast('error', res.error || 'Översättningen misslyckades.');
+      }
+    } catch (e: any) {
+      console.error('Failed to translate notice:', e);
+      setTranslationError(e?.message || 'Ett fel uppstod vid anrop till översättningstjänsten.');
+      showToast('error', 'Kunde inte översätta upphandlingen.');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   const handleRunDocumentAnalysis = async () => {
     if (uploadedFiles.length === 0) return;
     setAnalyzingDocuments(true);
@@ -266,6 +306,12 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                     <EyeOff className="w-3 h-3" /> Dold av dig
                   </span>
                 )}
+                {isForeign && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1" title={`Upphandling från ${countryInfo.name} (${countryInfo.language})`}>
+                    <span>{countryInfo.flag}</span>
+                    <span>{countryInfo.name}</span>
+                  </span>
+                )}
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 uppercase">
                   {notice.formType}
                 </span>
@@ -283,9 +329,21 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 <DeadlineBadge info={deadlineInfo} hideWhenNoDeadline={false} className={deadlineBadgeExtraClass} />
               </div>
 
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">
-                {notice.title}
-              </h2>
+              <div className="space-y-1">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-snug">
+                  {translation && !showOriginalText ? translation.translatedTitle : notice.title}
+                </h2>
+                {translation && !showOriginalText && (
+                  <p className="text-xs text-purple-600 dark:text-purple-400 font-medium flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Översatt till svenska med AI</span>
+                    <span className="text-slate-400 dark:text-slate-500">•</span>
+                    <span className="text-slate-500 dark:text-slate-400 font-normal italic truncate max-w-md">
+                      Original: {notice.title}
+                    </span>
+                  </p>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 dark:text-slate-300 pt-1">
                 <span className="flex items-center gap-1 font-semibold text-slate-900 dark:text-white">
@@ -330,6 +388,37 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 <Bookmark className="w-3.5 h-3.5" />
                 {savedItem ? 'Sparad i Pipeline' : 'Spara i Pipeline'}
               </button>
+
+              {/* Translation Action in Toolbar */}
+              {isForeign && (
+                <button
+                  onClick={translation ? () => setShowOriginalText(prev => !prev) : handleTranslateNotice}
+                  disabled={translating}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                    translation
+                      ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-200'
+                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-purple-600/20'
+                  }`}
+                  title={translation ? 'Växla mellan svensk översättning och originaltext' : 'Översätt upphandlingens titel, beskrivning och krav till svenska'}
+                >
+                  {translating ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Översätter...
+                    </>
+                  ) : translation ? (
+                    <>
+                      <Languages className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      {showOriginalText ? '🇸🇪 Visa svensk översättning' : `🌍 Visa original (${countryInfo.language})`}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      🇸🇪 Översätt till svenska
+                    </>
+                  )}
+                </button>
+              )}
 
               <button
                 onClick={() => {
@@ -702,6 +791,162 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 </div>
               </div>
 
+              {/* Foreign Tender AI Translation & Executive Summary Section */}
+              {isForeign && (
+                <div className="space-y-3">
+                  {!translation ? (
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-950/30 dark:via-indigo-950/30 dark:to-blue-950/30 border border-purple-200 dark:border-purple-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                      <div className="flex items-start gap-3.5">
+                        <div className="p-2.5 rounded-xl bg-purple-600 text-white flex-shrink-0 shadow-md">
+                          <Languages className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-purple-900 dark:text-purple-200">
+                              Utländsk upphandling från {countryInfo.flag} {countryInfo.name}
+                            </h4>
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/80 text-purple-700 dark:text-purple-300">
+                              Originalspråk: {countryInfo.language}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                            Klicka för att få en fullständig svensk översättning av kungörelsen, en pedagogisk sammanfattning av uppdragets omfattning samt analys av språkkrav för anbudet.
+                          </p>
+                          {translationError && (
+                            <p className="text-xs text-red-600 dark:text-red-400 mt-2 font-medium">
+                              ⚠️ {translationError}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleTranslateNotice}
+                        disabled={translating}
+                        className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/25 flex items-center justify-center gap-2 flex-shrink-0 transition-all disabled:opacity-60"
+                      >
+                        {translating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Översätter med AI...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Översätt till svenska
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-purple-200 dark:border-purple-800/80 bg-purple-50/40 dark:bg-purple-950/20 p-4 sm:p-5 space-y-4 shadow-sm">
+                      {/* Translation Header & Controls */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-purple-200/60 dark:border-purple-800/60">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{countryInfo.flag}</span>
+                          <div>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                              Svensk AI-Översättning & Analys
+                            </h4>
+                            <p className="text-[11px] text-purple-700 dark:text-purple-300">
+                              Översatt från {translation.detectedLanguage || countryInfo.language} med MiniMax AI
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-xl border border-purple-200 dark:border-purple-800 shadow-xs">
+                            <button
+                              onClick={() => setShowOriginalText(false)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                !showOriginalText
+                                  ? 'bg-purple-600 text-white shadow-xs'
+                                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              🇸🇪 Svenska
+                            </button>
+                            <button
+                              onClick={() => setShowOriginalText(true)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                showOriginalText
+                                  ? 'bg-slate-700 dark:bg-slate-700 text-white shadow-xs'
+                                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              {countryInfo.flag} Original ({countryInfo.language})
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={handleTranslateNotice}
+                            disabled={translating}
+                            className="p-1.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 hover:bg-purple-50 text-xs"
+                            title="Uppdatera översättning"
+                          >
+                            <RotateCcw className={`w-3.5 h-3.5 ${translating ? 'animate-spin' : ''}`} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Executive Summary Bullets */}
+                      {translation.executiveSummary && translation.executiveSummary.length > 0 && (
+                        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60 space-y-2 shadow-xs">
+                          <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                            Executive Summary på ren svenska
+                          </h5>
+                          <ul className="space-y-1.5 text-xs text-slate-800 dark:text-slate-200">
+                            {translation.executiveSummary.map((point, idx) => (
+                              <li key={idx} className="flex items-start gap-2 leading-relaxed">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-1.5 flex-shrink-0" />
+                                <span>{point}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Submission Language Requirement Note */}
+                      {translation.submissionLanguageNote && (
+                        <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-amber-800 dark:text-amber-300">Viktigt om anbudsspråk & inlämning:</p>
+                            <p className="leading-relaxed text-[11px] text-amber-900/90 dark:text-amber-200/90">{translation.submissionLanguageNote}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Key Terms Glossary */}
+                      {translation.keyTerms && translation.keyTerms.length > 0 && (
+                        <div className="space-y-2 pt-1">
+                          <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5 text-ted-600" />
+                            Begreppsordlista (Lokala facktermer & avtalsstandarder)
+                          </h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {translation.keyTerms.map((item, idx) => (
+                              <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-purple-100 dark:border-purple-900/60 text-xs space-y-1 shadow-xs">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-slate-900 dark:text-white font-mono text-[11px]">{item.term}</span>
+                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                                    {item.translation}
+                                  </span>
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+                                  {item.explanation}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Three Stat Cards: Buyer, Contract Size, Dates */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* 1. Authority */}
@@ -787,9 +1032,21 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
 
               {/* Description Section */}
               <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Beskrivning av upphandlingen</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-ted-600" />
+                    Beskrivning av upphandlingen
+                  </h3>
+                  {translation && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                      {showOriginalText ? `Originalspråk (${countryInfo.language})` : '🇸🇪 Svensk översättning'}
+                    </span>
+                  )}
+                </div>
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-slate-100 whitespace-pre-wrap leading-relaxed shadow-sm">
-                  {notice.description || 'Ingen fullständig beskrivningstext tillgänglig i TED:s indexfält för detta meddelande. Se officiella TED-länkar ovan för komplett förfrågningsunderlag.'}
+                  {translation && !showOriginalText
+                    ? translation.translatedDescription
+                    : (notice.description || 'Ingen fullständig beskrivningstext tillgänglig i TED:s indexfält för detta meddelande. Se officiella TED-länkar ovan för komplett förfrågningsunderlag.')}
                 </div>
               </div>
 

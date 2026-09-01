@@ -134,3 +134,80 @@ export function getDeadlineInfo(
     label
   };
 }
+
+export interface CountryInfo {
+  code: string;
+  name: string;
+  flag: string;
+  language: string;
+  isNordic: boolean;
+}
+
+export function getCountryInfo(countryCode?: string): CountryInfo {
+  const code = (countryCode || '').toUpperCase().trim();
+  switch (code) {
+    case 'SWE':
+    case 'SE':
+      return { code: 'SWE', name: 'Sverige', flag: '🇸🇪', language: 'Svenska', isNordic: true };
+    case 'DNK':
+    case 'DK':
+      return { code: 'DNK', name: 'Danmark', flag: '🇩🇰', language: 'Danska', isNordic: true };
+    case 'NOR':
+    case 'NO':
+      return { code: 'NOR', name: 'Norge', flag: '🇳🇴', language: 'Norska', isNordic: true };
+    case 'FIN':
+    case 'FI':
+      return { code: 'FIN', name: 'Finland', flag: '🇫🇮', language: 'Finska / Svenska', isNordic: true };
+    case 'DEU':
+    case 'DE':
+      return { code: 'DEU', name: 'Tyskland', flag: '🇩🇪', language: 'Tyska', isNordic: false };
+    case 'FRA':
+    case 'FR':
+      return { code: 'FRA', name: 'Frankrike', flag: '🇫🇷', language: 'Franska', isNordic: false };
+    case 'NLD':
+    case 'NL':
+      return { code: 'NLD', name: 'Nederländerna', flag: '🇳🇱', language: 'Nederländska', isNordic: false };
+    case 'POL':
+    case 'PL':
+      return { code: 'POL', name: 'Polen', flag: '🇵🇱', language: 'Polska', isNordic: false };
+    case 'ITA':
+    case 'IT':
+      return { code: 'ITA', name: 'Italien', flag: '🇮🇹', language: 'Italienska', isNordic: false };
+    case 'ESP':
+    case 'ES':
+      return { code: 'ESP', name: 'Spanien', flag: '🇪🇸', language: 'Spanska', isNordic: false };
+    case 'AUT':
+    case 'AT':
+      return { code: 'AUT', name: 'Österrike', flag: '🇦🇹', language: 'Tyska', isNordic: false };
+    case 'BEL':
+    case 'BE':
+      return { code: 'BEL', name: 'Belgien', flag: '🇧🇪', language: 'Franska / Nederländska', isNordic: false };
+    case 'EST':
+    case 'EE':
+      return { code: 'EST', name: 'Estland', flag: '🇪🇪', language: 'Estniska', isNordic: false };
+    case 'LVA':
+    case 'LV':
+      return { code: 'LVA', name: 'Lettland', flag: '🇱🇻', language: 'Lettiska', isNordic: false };
+    case 'LTU':
+    case 'LT':
+      return { code: 'LTU', name: 'Litauen', flag: '🇱🇹', language: 'Litauiska', isNordic: false };
+    case 'ISL':
+    case 'IS':
+      return { code: 'ISL', name: 'Island', flag: '🇮🇸', language: 'Isländska', isNordic: true };
+    case 'GBR':
+    case 'UK':
+      return { code: 'GBR', name: 'Storbritannien', flag: '🇬🇧', language: 'Engelska', isNordic: false };
+    case 'IRL':
+    case 'IE':
+      return { code: 'IRL', name: 'Irland', flag: '🇮🇪', language: 'Engelska', isNordic: false };
+    default:
+      return { code: code || 'EU', name: code || 'Europa', flag: '🇪🇺', language: 'Europeiskt språk', isNordic: false };
+  }
+}
+
+export function isForeignCountry(countryCode?: string): boolean {
+  if (!countryCode) return false;
+  const code = countryCode.toUpperCase().trim();
+  return code !== 'SWE' && code !== 'SE';
+}
+

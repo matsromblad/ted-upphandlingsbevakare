@@ -16,7 +16,8 @@ import {
   AdminUser,
   AdminWatchlist,
   SystemHealthResponse,
-  EmailStatusInfo
+  EmailStatusInfo,
+  NoticeTranslation
 } from './types';
 import { getAccessToken } from './supabaseClient';
 
@@ -125,6 +126,20 @@ export const api = {
       method: 'POST',
       headers,
       body: JSON.stringify({ notice })
+    });
+    return res.json();
+  },
+
+  // AI Translate Notice to Swedish
+  translateNotice: async (
+    notice: Notice,
+    targetLanguage = 'sv'
+  ): Promise<{ success: boolean; translation?: NoticeTranslation; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/ai/translate-notice`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ notice, targetLanguage })
     });
     return res.json();
   },

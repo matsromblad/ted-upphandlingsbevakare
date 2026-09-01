@@ -1,7 +1,7 @@
 import React from 'react';
-import { Bookmark, ExternalLink, Building, MapPin, Coins, Globe2, EyeOff, Eye } from 'lucide-react';
+import { Bookmark, ExternalLink, Building, MapPin, Coins, Globe2, EyeOff, Eye, Languages, Sparkles } from 'lucide-react';
 import { Notice } from '../types';
-import { getDeadlineInfo } from '../utils/dateUtils';
+import { getDeadlineInfo, getCountryInfo, isForeignCountry } from '../utils/dateUtils';
 import { DeadlineBadge } from './DeadlineBadge';
 
 interface NoticeCardProps {
@@ -31,6 +31,8 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
 }) => {
   const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
   const tenderPortalUrl = notice.links?.submission || notice.links?.documents;
+  const countryInfo = getCountryInfo(notice.country);
+  const isForeign = notice.isForeign || isForeignCountry(notice.country);
 
   if (isHidden) {
     return (
@@ -42,11 +44,16 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
           <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center gap-1 flex-shrink-0">
             <EyeOff className="w-2.5 h-2.5" /> Dold
           </span>
+          {isForeign && (
+            <span className="text-xs flex-shrink-0" title={`${countryInfo.name} (${countryInfo.language})`}>
+              {countryInfo.flag}
+            </span>
+          )}
           <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">
             {notice.publicationNumber}
           </span>
           <span className="text-xs text-slate-600 dark:text-slate-400 truncate italic">
-            {notice.title}
+            {notice.translation?.translatedTitle || notice.title}
           </span>
           {notice.buyer && (
             <span className="text-xs text-slate-400 truncate hidden md:inline">
@@ -90,6 +97,15 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
             <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
               {notice.publicationNumber}
             </span>
+            {isForeign && (
+              <span
+                className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 flex items-center gap-1"
+                title={`Utländsk upphandling: ${countryInfo.name} (${countryInfo.language})`}
+              >
+                <span>{countryInfo.flag}</span>
+                <span>{countryInfo.code}</span>
+              </span>
+            )}
             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 uppercase">
               {notice.formType}
             </span>
@@ -122,9 +138,17 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
         </div>
 
         {/* Title */}
-        <h3 className="font-bold text-base text-slate-900 dark:text-white leading-snug group-hover:text-ted-600 dark:group-hover:text-ted-400 transition-colors line-clamp-2">
-          {notice.title}
-        </h3>
+        <div>
+          <h3 className="font-bold text-base text-slate-900 dark:text-white leading-snug group-hover:text-ted-600 dark:group-hover:text-ted-400 transition-colors line-clamp-2">
+            {notice.translation?.translatedTitle || notice.title}
+          </h3>
+          {notice.translation?.translatedTitle && (
+            <p className="text-[11px] text-purple-600 dark:text-purple-400 italic truncate mt-0.5 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              <span>Original: {notice.title}</span>
+            </p>
+          )}
+        </div>
 
         {/* Buyer & Location */}
         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-400">
@@ -132,18 +156,18 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
             <Building className="w-3.5 h-3.5 text-ted-600 flex-shrink-0" />
             <span className="truncate">{notice.buyer}</span>
           </span>
-          {notice.city && (
+          {(notice.city || notice.country) && (
             <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-              {notice.city}, {notice.country}
+              <MapPin className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
+              {countryInfo.flag} {notice.city ? `${notice.city}, ` : ''}{countryInfo.name}
             </span>
           )}
         </div>
 
         {/* Description snippet */}
-        {notice.description && (
+        {(notice.translation?.translatedDescription || notice.description) && (
           <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-            {notice.description}
+            {notice.translation?.translatedDescription || notice.description}
           </p>
         )}
 

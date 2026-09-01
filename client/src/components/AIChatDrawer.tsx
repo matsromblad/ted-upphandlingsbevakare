@@ -37,15 +37,23 @@ export const AIChatDrawer: React.FC<AIChatDrawerProps> = ({
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const isForeign = currentNotice?.isForeign || (currentNotice?.country && currentNotice.country !== 'SWE' && currentNotice.country !== 'SE');
+
   const quickPrompts = currentNotice
-    ? [
-        `Vilka är de viktigaste kraven i "${currentNotice.title.slice(0, 35)}..."?`,
-        'Ge 3 skarpa frågor vi bör ställa till upphandlaren under frågestunden.',
-        'Hur bör vi strukturera vårt anbud för att vinna denna upphandling?'
-      ]
+    ? isForeign
+      ? [
+          'Förklara vad denna utländska upphandling innebär på ren svenska och vad som gäller för anbudsspråk.',
+          'Hjälp mig formulera en formell fråga till upphandlaren på målpråket under frågestunden.',
+          'Vilka är de största riskerna med att lämna anbud i detta land?'
+        ]
+      : [
+          `Vilka är de viktigaste kraven i "${currentNotice.title.slice(0, 35)}..."?`,
+          'Ge 3 skarpa frågor vi bör ställa till upphandlaren under frågestunden.',
+          'Hur bör vi strukturera vårt anbud för att vinna denna upphandling?'
+        ]
     : [
-        'Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige.',
-        'Vilka krav ställs vanligtvis på BIM- och VDC-konsulter i offentliga upphandlingar?',
+        'Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige och Norden.',
+        'Vilka krav ställs vanligtvis på tekniska konsulter i utländska och nordiska upphandlingar?',
         'Skapa en bevakningsprofil för BIM, digitala tvillingar och projekteringsstöd.'
       ];
 

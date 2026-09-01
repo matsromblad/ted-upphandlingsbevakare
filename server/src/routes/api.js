@@ -5,7 +5,7 @@ import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
 import { searchMagnitNotices, getMagnitNoticeById } from '../services/magnitService.js';
 import { searchVeramaNotices, getVeramaNoticeById } from '../services/veramaService.js';
-import { naturalLanguageToFilters, analyzeCvAndGenerateSearchFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant, callMiniMax } from '../services/minimaxService.js';
+import { naturalLanguageToFilters, analyzeCvAndGenerateSearchFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant, callMiniMax, translateNotice } from '../services/minimaxService.js';
 import { parseUploadedProcurementFiles } from '../services/documentParserService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
 import { buildWatchlistManageUrl } from '../services/emailService.js';
@@ -374,6 +374,21 @@ router.post('/ai/analyze', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[AI Analyze] Error during tender analysis:', error);
     res.status(500).json({ success: false, error: error.message || 'Analysen misslyckades' });
+  }
+});
+
+router.post('/ai/translate-notice', async (req, res) => {
+  try {
+    const { notice, targetLanguage = 'sv' } = req.body;
+    if (!notice) {
+      return res.status(400).json({ success: false, error: 'Notice-objekt krävs för översättning' });
+    }
+
+    const translation = await translateNotice(notice, targetLanguage);
+    res.json({ success: true, translation });
+  } catch (error) {
+    console.error('[AI Translate Notice] Error during notice translation:', error);
+    res.status(500).json({ success: false, error: error.message || 'Översättningen misslyckades' });
   }
 });
 

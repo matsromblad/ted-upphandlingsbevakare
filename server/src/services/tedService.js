@@ -360,12 +360,22 @@ export function normalizeNotice(notice) {
 
   const pubNum = notice['publication-number'] || '';
 
+  // Country mapping helper
+  let country = 'SWE';
+  const rawCountry = notice['organisation-country-buyer'] || notice['place-of-performance-country-proc'];
+  if (Array.isArray(rawCountry) && rawCountry.length > 0) country = String(rawCountry[0]).toUpperCase();
+  else if (typeof rawCountry === 'string' && rawCountry.trim()) country = rawCountry.trim().toUpperCase();
+
   // Extract multilingual title (SWE > ENG > First available)
   let title = 'Upphandling utan titel';
+  let originalLanguage = 'swe';
+  let availableLanguages = [];
   const rawTitle = notice['notice-title'];
   if (typeof rawTitle === 'string') {
     title = rawTitle;
   } else if (rawTitle && typeof rawTitle === 'object') {
+    availableLanguages = Object.keys(rawTitle);
+    originalLanguage = availableLanguages[0] || 'swe';
     title = rawTitle.swe || rawTitle.eng || Object.values(rawTitle)[0] || title;
   }
 
@@ -375,6 +385,7 @@ export function normalizeNotice(notice) {
   if (typeof rawDesc === 'string') {
     description = rawDesc;
   } else if (rawDesc && typeof rawDesc === 'object') {
+    if (availableLanguages.length === 0) availableLanguages = Object.keys(rawDesc);
     const dVal = rawDesc.swe || rawDesc.eng || Object.values(rawDesc)[0] || '';
     if (Array.isArray(dVal)) {
       description = dVal.join('\n\n');
@@ -382,6 +393,9 @@ export function normalizeNotice(notice) {
       description = dVal;
     }
   }
+
+  // Determine if tender is foreign (outside Sweden or in non-Swedish primary language)
+  const isForeign = country !== 'SWE' && country !== 'SE';
 
   // Extract buyer
   let buyerName = 'Okänd upphandlare';
@@ -402,11 +416,6 @@ export function normalizeNotice(notice) {
   const rawCity = notice['organisation-city-buyer'];
   if (Array.isArray(rawCity)) city = rawCity.join(', ');
   else if (typeof rawCity === 'string') city = rawCity;
-
-  let country = 'SWE';
-  const rawCountry = notice['organisation-country-buyer'] || notice['place-of-performance-country-proc'];
-  if (Array.isArray(rawCountry)) country = rawCountry[0];
-  else if (typeof rawCountry === 'string') country = rawCountry;
 
   // CPV codes (deduplicated)
   const rawCpvs = notice['classification-cpv'] || [];
@@ -515,6 +524,9 @@ export function normalizeNotice(notice) {
     estimatedValueFormatted,
     estimatedValueDisplay,
     portalName,
+    isForeign,
+    originalLanguage,
+    availableLanguages,
     links: {
       tedHtml: tedHtmlUrl,
       tedPdf: tedPdfUrl,
