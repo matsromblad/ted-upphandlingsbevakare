@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
-type ToastType = 'success' | 'error';
+type ToastType = 'success' | 'error' | 'info';
 
 interface ToastMessage {
   id: number;
@@ -52,13 +52,17 @@ export const ToastContainer: React.FC = () => {
           className={`flex items-start gap-2.5 p-3.5 rounded-xl shadow-lg border text-sm animate-fadeIn ${
             msg.type === 'error'
               ? 'bg-red-50 dark:bg-red-950/90 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+              : msg.type === 'info'
+              ? 'bg-slate-100 dark:bg-slate-850 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200'
               : 'bg-emerald-50 dark:bg-emerald-950/90 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
           }`}
         >
           {msg.type === 'error' ? (
-            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+          ) : msg.type === 'info' ? (
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-slate-600 dark:text-slate-400" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
           )}
           <span className="flex-1 font-medium leading-snug">{msg.message}</span>
           <button

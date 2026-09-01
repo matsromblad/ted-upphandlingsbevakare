@@ -7,6 +7,7 @@ import {
   Download,
   Loader2,
   Eye,
+  EyeOff,
   CheckCheck,
   AlertCircle,
   Grid,
@@ -26,6 +27,8 @@ interface WatchlistsViewProps {
   onWatchlistChanged: () => void;
   initialSelectedWatchlistId?: string | null;
   initialTab?: 'profiles' | 'feed';
+  hiddenNoticeIds?: Set<string>;
+  onToggleHideNotice?: (notice: Notice | string, e?: React.MouseEvent) => void;
 }
 
 export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
@@ -34,7 +37,9 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   onTenderSaved,
   onWatchlistChanged,
   initialSelectedWatchlistId = null,
-  initialTab = 'feed'
+  initialTab = 'feed',
+  hiddenNoticeIds,
+  onToggleHideNotice
 }) => {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [hits, setHits] = useState<WatchlistHit[]>([]);
@@ -46,6 +51,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   const [updatingFrequencyId, setUpdatingFrequencyId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
+  const [showHidden, setShowHidden] = useState<boolean>(true);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -275,144 +281,174 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
       </div>
 
       {/* TAB: FEED */}
-      {activeTab === 'feed' && (
-        <div className="space-y-4">
-          {/* Feed Filter Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">Filtrera på bevakning:</span>
-              <select
-                value={selectedWatchlistId || ''}
-                onChange={(e) => setSelectedWatchlistId(e.target.value || null)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-900 dark:text-white"
-              >
-                <option value="">Alla bevakningar</option>
-                {watchlists.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
+      {activeTab === 'feed' && (() => {
+        const hiddenCountInFeed = filteredHits.filter(h => h.notice && hiddenNoticeIds?.has(h.notice.id)).length;
+        const displayedHits = showHidden
+          ? filteredHits
+          : filteredHits.filter(h => !h.notice || !hiddenNoticeIds?.has(h.notice.id));
 
-            <div className="flex items-center gap-2">
-              {unreadCount > 0 && (
-                <button
-                  onClick={handleMarkAllRead}
-                  className="text-xs font-semibold text-ted-600 hover:text-ted-700 dark:text-ted-400 flex items-center gap-1"
+        return (
+          <div className="space-y-4">
+            {/* Feed Filter Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">Filtrera på bevakning:</span>
+                <select
+                  value={selectedWatchlistId || ''}
+                  onChange={(e) => setSelectedWatchlistId(e.target.value || null)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium text-slate-900 dark:text-white"
                 >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  Markera alla som lästa
-                </button>
-              )}
+                  <option value="">Alla bevakningar</option>
+                  {watchlists.map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
 
-              <div className="flex items-center bg-slate-200 dark:bg-slate-800 p-1 rounded-xl">
-                <button
-                  onClick={() => setViewMode('card')}
-                  className={`p-1.5 rounded-lg text-xs transition-all ${
-                    viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
-                  }`}
-                  title="Kortvy"
-                >
-                  <Grid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('table')}
-                  className={`p-1.5 rounded-lg text-xs transition-all ${
-                    viewMode === 'table' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
-                  }`}
-                  title="Listvy"
-                >
-                  <List className="w-4 h-4" />
-                </button>
+              <div className="flex items-center gap-2">
+                {hiddenNoticeIds && hiddenNoticeIds.size > 0 && (
+                  <button
+                    onClick={() => setShowHidden(prev => !prev)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                      showHidden
+                        ? 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                    }`}
+                    title={showHidden ? 'Klicka för att helt filtrera bort dolda upphandlingar från listan' : 'Klicka för att visa dolda upphandlingar som gråmarkerade'}
+                  >
+                    {showHidden ? <Eye className="w-3.5 h-3.5 text-slate-500" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                    <span>{showHidden ? `Visar dolda (${hiddenCountInFeed})` : `Dölj dolda (${hiddenCountInFeed})`}</span>
+                  </button>
+                )}
+
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllRead}
+                    className="text-xs font-semibold text-ted-600 hover:text-ted-700 dark:text-ted-400 flex items-center gap-1"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Markera alla som lästa
+                  </button>
+                )}
+
+                <div className="flex items-center bg-slate-200 dark:bg-slate-800 p-1 rounded-xl">
+                  <button
+                    onClick={() => setViewMode('card')}
+                    className={`p-1.5 rounded-lg text-xs transition-all ${
+                      viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
+                    }`}
+                    title="Kortvy"
+                  >
+                    <Grid className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={`p-1.5 rounded-lg text-xs transition-all ${
+                      viewMode === 'table' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
+                    }`}
+                    title="Listvy"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Hits Feed List */}
-          {filteredHits.length === 0 ? (
-            <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-500 flex items-center justify-center mx-auto">
-                <Bell className="w-6 h-6" />
+            {/* Hits Feed List */}
+            {displayedHits.length === 0 ? (
+              <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-500 flex items-center justify-center mx-auto">
+                  <Bell className="w-6 h-6" />
+                </div>
+                <h3 className="font-bold text-slate-900 dark:text-white">Inga bevakningsträffar att visa</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  {filteredHits.length > 0 && !showHidden
+                    ? 'Alla träffar i denna vy är dolda av dig. Klicka på "Dölj dolda" ovan för att visa dem igen.'
+                    : 'När dina bevakningsprofiler körs och hittar nya upphandlingar från TED kommer de att visas här.'}
+                </p>
+                {filteredHits.length === 0 && (
+                  <button
+                    onClick={handleRunAll}
+                    disabled={runningAll || watchlists.length === 0}
+                    className="mt-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 inline-flex items-center gap-1.5"
+                  >
+                    <Play className="w-3.5 h-3.5" /> Kör bevakningar nu
+                  </button>
+                )}
               </div>
-              <h3 className="font-bold text-slate-900 dark:text-white">Inga bevakningsträffar ännu</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                När dina bevakningsprofiler körs och hittar nya upphandlingar från TED kommer de att visas här.
-              </p>
-              <button
-                onClick={handleRunAll}
-                disabled={runningAll || watchlists.length === 0}
-                className="mt-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 inline-flex items-center gap-1.5"
-              >
-                <Play className="w-3.5 h-3.5" /> Kör bevakningar nu
-              </button>
-            </div>
-          ) : viewMode === 'card' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
-              {filteredHits.map((hit) => {
-                const notice = hit.notice;
-                if (!notice) return null;
-                const isUnread = !hit.is_read;
+            ) : viewMode === 'card' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
+                {displayedHits.map((hit) => {
+                  const notice = hit.notice;
+                  if (!notice) return null;
+                  const isUnread = !hit.is_read;
 
-                return (
-                  <NoticeCard
-                    key={hit.id}
-                    notice={notice}
-                    isSaved={isTenderSaved(notice.id)}
-                    onSave={handleSaveToPipeline}
-                    isUnread={isUnread}
-                    onOpenDetail={() => {
-                      if (isUnread) handleMarkHitRead(hit.id);
-                      onOpenNoticeDetail(notice);
-                    }}
-                    extraBadges={
-                      <>
-                        {isUnread && (
-                          <span className="px-2 py-0.5 rounded-md font-extrabold bg-amber-500 text-white uppercase text-[10px] tracking-wider">
-                            NY
+                  return (
+                    <NoticeCard
+                      key={hit.id}
+                      notice={notice}
+                      isSaved={isTenderSaved(notice.id)}
+                      onSave={handleSaveToPipeline}
+                      isUnread={isUnread}
+                      isHidden={Boolean(hiddenNoticeIds?.has(notice.id))}
+                      onToggleHide={onToggleHideNotice}
+                      onOpenDetail={() => {
+                        if (isUnread) handleMarkHitRead(hit.id);
+                        onOpenNoticeDetail(notice);
+                      }}
+                      extraBadges={
+                        <>
+                          {isUnread && (
+                            <span className="px-2 py-0.5 rounded-md font-extrabold bg-amber-500 text-white uppercase text-[10px] tracking-wider">
+                              NY
+                            </span>
+                          )}
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+                            {hit.watchlist_name}
                           </span>
-                        )}
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
-                          {hit.watchlist_name}
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <NoticeTable
+                notices={displayedHits.filter(h => h.notice).map(h => h.notice as Notice)}
+                isTenderSaved={isTenderSaved}
+                onSave={handleSaveToPipeline}
+                isHidden={(id) => Boolean(hiddenNoticeIds?.has(id))}
+                onToggleHide={onToggleHideNotice}
+                isRowUnread={(notice) => {
+                  const hit = displayedHits.find(h => h.notice?.id === notice.id);
+                  return Boolean(hit && !hit.is_read);
+                }}
+                renderRowBadge={(notice) => {
+                  const hit = displayedHits.find(h => h.notice?.id === notice.id);
+                  if (!hit) return null;
+                  return (
+                    <>
+                      {!hit.is_read && (
+                        <span className="px-2 py-0.5 rounded-md font-extrabold bg-amber-500 text-white uppercase text-[10px] tracking-wider">
+                          NY
                         </span>
-                      </>
-                    }
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <NoticeTable
-              notices={filteredHits.filter(h => h.notice).map(h => h.notice as Notice)}
-              isTenderSaved={isTenderSaved}
-              onSave={handleSaveToPipeline}
-              isRowUnread={(notice) => {
-                const hit = filteredHits.find(h => h.notice?.id === notice.id);
-                return Boolean(hit && !hit.is_read);
-              }}
-              renderRowBadge={(notice) => {
-                const hit = filteredHits.find(h => h.notice?.id === notice.id);
-                if (!hit) return null;
-                return (
-                  <>
-                    {!hit.is_read && (
-                      <span className="px-2 py-0.5 rounded-md font-extrabold bg-amber-500 text-white uppercase text-[10px] tracking-wider">
-                        NY
+                      )}
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+                        {hit.watchlist_name}
                       </span>
-                    )}
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
-                      {hit.watchlist_name}
-                    </span>
-                  </>
-                );
-              }}
-              onOpenDetail={(notice) => {
-                const hit = filteredHits.find(h => h.notice?.id === notice.id);
-                if (hit && !hit.is_read) handleMarkHitRead(hit.id);
-                onOpenNoticeDetail(notice);
-              }}
-            />
-          )}
-        </div>
-      )}
+                    </>
+                  );
+                }}
+                onOpenDetail={(notice) => {
+                  const hit = displayedHits.find(h => h.notice?.id === notice.id);
+                  if (hit && !hit.is_read) handleMarkHitRead(hit.id);
+                  onOpenNoticeDetail(notice);
+                }}
+              />
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB: PROFILES */}
       {activeTab === 'profiles' && (

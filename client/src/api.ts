@@ -327,5 +327,31 @@ export const api = {
     const headers = await getHeaders();
     const res = await fetch(`${API_BASE}/users/active`, { headers });
     return res.json();
+  },
+
+  // Hidden Notices (User-Dismissed)
+  getHiddenNotices: async (): Promise<{ success: boolean; hiddenNotices: string[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/hidden-notices`, { headers });
+    return res.json();
+  },
+
+  hideNotice: async (noticeId: string, reason = 'dismissed'): Promise<{ success: boolean; noticeId?: string; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/hidden-notices`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ noticeId, reason })
+    });
+    return res.json();
+  },
+
+  unhideNotice: async (noticeId: string): Promise<{ success: boolean; noticeId?: string; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/hidden-notices/${encodeURIComponent(noticeId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    return res.json();
   }
 };

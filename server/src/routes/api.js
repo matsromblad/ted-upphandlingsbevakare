@@ -10,7 +10,7 @@ import { parseUploadedProcurementFiles } from '../services/documentParserService
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
 import { buildWatchlistManageUrl } from '../services/emailService.js';
 import { CPV_CATEGORIES, searchCpv } from '../services/cpvData.js';
-import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao } from '../db.js';
+import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao, hiddenNoticeDao } from '../db.js';
 import { requireAuth, isSupabaseConfigured, isPlaceholder, supabaseAdmin } from '../supabase.js';
 
 const upload = multer({
@@ -700,6 +700,41 @@ router.delete('/pipeline/:id', requireAuth, async (req, res) => {
   try {
     await pipelineDao.delete(req.params.id, req.user.id, req.db);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 4b. Hidden Notices (User-Dismissed Tenders)
+// ==========================================
+
+router.get('/hidden-notices', requireAuth, async (req, res) => {
+  try {
+    const hiddenNotices = await hiddenNoticeDao.getAll(req.user.id, req.db);
+    res.json({ success: true, hiddenNotices });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/hidden-notices', requireAuth, async (req, res) => {
+  try {
+    const { noticeId, reason } = req.body;
+    if (!noticeId) {
+      return res.status(400).json({ success: false, error: 'noticeId krävs' });
+    }
+    await hiddenNoticeDao.hide(req.user.id, noticeId, reason, req.db);
+    res.json({ success: true, noticeId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/hidden-notices/:noticeId', requireAuth, async (req, res) => {
+  try {
+    await hiddenNoticeDao.unhide(req.user.id, req.params.noticeId, req.db);
+    res.json({ success: true, noticeId: req.params.noticeId });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

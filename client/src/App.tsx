@@ -14,7 +14,7 @@ import { api } from './api';
 import { supabase, isSupabaseConfigured, subscribeSupabaseConfig, ensureSupabaseClient } from './supabaseClient';
 import { ExternalLink, Code2, Heart, Info, Sparkles } from 'lucide-react';
 import { WspLogo } from './components/WspLogo';
-import { ToastContainer } from './components/Toast';
+import { ToastContainer, showToast } from './components/Toast';
 
 function getInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
@@ -41,6 +41,7 @@ export const App: React.FC = () => {
 
   const [savedTenders, setSavedTenders] = useState<SavedTender[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [hiddenNoticeIds, setHiddenNoticeIds] = useState<Set<string>>(new Set());
 
   // User Auth State
   const [currentUser, setCurrentUser] = useState<any | null>(null);
@@ -99,9 +100,10 @@ export const App: React.FC = () => {
 
   const loadPipelineAndWatchlists = async () => {
     try {
-      const [pipeRes, wlRes] = await Promise.all([
+      const [pipeRes, wlRes, hiddenRes] = await Promise.all([
         api.getPipeline(),
-        api.getWatchlists()
+        api.getWatchlists(),
+        api.getHiddenNotices()
       ]);
 
       if (pipeRes.success && pipeRes.tenders) {
@@ -110,8 +112,51 @@ export const App: React.FC = () => {
       if (wlRes.success) {
         setUnreadCount(wlRes.unreadCount || 0);
       }
+      if (hiddenRes.success && Array.isArray(hiddenRes.hiddenNotices)) {
+        setHiddenNoticeIds(new Set(hiddenRes.hiddenNotices));
+      }
     } catch (e) {
       console.error('Failed to load initial data:', e);
+    }
+  };
+
+  const handleToggleHideNotice = async (noticeOrId: Notice | string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const noticeId = typeof noticeOrId === 'string' ? noticeOrId : noticeOrId.id;
+    const isCurrentlyHidden = hiddenNoticeIds.has(noticeId);
+
+    // Optimistic update
+    setHiddenNoticeIds(prev => {
+      const next = new Set(prev);
+      if (isCurrentlyHidden) {
+        next.delete(noticeId);
+      } else {
+        next.add(noticeId);
+      }
+      return next;
+    });
+
+    try {
+      if (isCurrentlyHidden) {
+        await api.unhideNotice(noticeId);
+        showToast('info', 'Upphandlingen är nu synlig igen.');
+      } else {
+        await api.hideNotice(noticeId);
+        showToast('info', 'Upphandlingen har dolts och visas gråad.');
+      }
+    } catch (err: any) {
+      console.error('Failed to toggle hidden status:', err);
+      showToast('error', 'Kunde inte uppdatera dold-status.');
+      // Revert on error
+      setHiddenNoticeIds(prev => {
+        const next = new Set(prev);
+        if (isCurrentlyHidden) {
+          next.add(noticeId);
+        } else {
+          next.delete(noticeId);
+        }
+        return next;
+      });
     }
   };
 
@@ -155,6 +200,8 @@ export const App: React.FC = () => {
             savedTenders={savedTenders}
             onTenderSaved={loadPipelineAndWatchlists}
             onWatchlistCreated={loadPipelineAndWatchlists}
+            hiddenNoticeIds={hiddenNoticeIds}
+            onToggleHideNotice={handleToggleHideNotice}
           />
         )}
 
@@ -166,6 +213,8 @@ export const App: React.FC = () => {
             onWatchlistChanged={loadPipelineAndWatchlists}
             initialSelectedWatchlistId={initialNavigation.watchlistId}
             initialTab={initialNavigation.watchlistsTab}
+            hiddenNoticeIds={hiddenNoticeIds}
+            onToggleHideNotice={handleToggleHideNotice}
           />
         )}
 
@@ -243,6 +292,8 @@ export const App: React.FC = () => {
         onOpenChatWithNotice={handleOpenChatWithNotice}
         savedTenders={savedTenders}
         onTenderUpdated={loadPipelineAndWatchlists}
+        isHidden={selectedNotice ? hiddenNoticeIds.has(selectedNotice.id) : false}
+        onToggleHideNotice={(noticeId) => handleToggleHideNotice(noticeId)}
       />
 
       {/* MiniMax AI Chat Drawer */}

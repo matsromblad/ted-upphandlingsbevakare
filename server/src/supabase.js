@@ -127,3 +127,47 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ success: false, error: 'Autentisering misslyckades' });
   }
 }
+
+/**
+ * Admin Authorization Middleware
+ * Allows access if:
+ * 1. Running in local/offline mode
+ * 2. User email is 'mats.romblad@wsp.com'
+ * 3. User metadata has role: 'admin'
+ * 4. User profile has role: 'admin'
+ */
+export async function requireAdmin(req, res, next) {
+  return requireAuth(req, res, async () => {
+    if (!isSupabaseConfigured || !supabaseAdmin) {
+      req.isAdmin = true;
+      return next();
+    }
+
+    const email = (req.user?.email || '').toLowerCase();
+    if (email === 'mats.romblad@wsp.com' || req.user?.user_metadata?.role === 'admin') {
+      req.isAdmin = true;
+      return next();
+    }
+
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', req.user.id)
+        .single();
+
+      if (profile && profile.role === 'admin') {
+        req.isAdmin = true;
+        return next();
+      }
+    } catch (e) {
+      console.warn('[Admin Auth] Error checking profile role:', e.message);
+    }
+
+    return res.status(403).json({
+      success: false,
+      error: 'Behörighet saknas. Endast administratörer har tillgång till denna funktion.'
+    });
+  });
+}
+

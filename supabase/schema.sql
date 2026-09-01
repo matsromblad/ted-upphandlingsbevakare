@@ -3,6 +3,8 @@
 -- ==============================================================================
 
 -- Om du redan har skapat tabellerna tidigare, kör dessa rader för att migrera:
+ALTER TABLE IF EXISTS public.profiles ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+ALTER TABLE IF EXISTS public.profiles ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ;
 ALTER TABLE IF EXISTS public.watchlists ADD COLUMN IF NOT EXISTS email_frequency TEXT NOT NULL DEFAULT 'daily' CHECK (email_frequency IN ('daily', 'weekly'));
 ALTER TABLE IF EXISTS public.watchlists ADD COLUMN IF NOT EXISTS last_email_sent_at TIMESTAMPTZ;
 ALTER TABLE IF EXISTS public.watchlists ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT UNIQUE DEFAULT gen_random_uuid()::text;
@@ -19,6 +21,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   preferred_cpv JSONB DEFAULT '["71300000", "71240000", "71320000", "71541000", "72224000"]'::jsonb,
   preferred_countries JSONB DEFAULT '["SWE"]'::jsonb,
   min_value BIGINT DEFAULT 0,
+  role TEXT NOT NULL DEFAULT 'user',
+  last_active_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
@@ -89,6 +93,15 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
+-- 6. Hidden Notices Table (User-dismissed tenders with minimal gray display)
+CREATE TABLE IF NOT EXISTS public.hidden_notices (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notice_id TEXT NOT NULL,
+  reason TEXT DEFAULT 'dismissed',
+  hidden_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+  PRIMARY KEY (user_id, notice_id)
+);
+
 -- ==============================================================================
 -- Automatic User Profile Creation Trigger on Sign Up
 -- ==============================================================================
@@ -144,6 +157,7 @@ ALTER TABLE public.watchlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.watchlist_hits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.saved_tenders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hidden_notices ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: Users can view and update their own profile
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
@@ -172,6 +186,11 @@ CREATE POLICY "Users can view own chats" ON public.chat_messages FOR SELECT USIN
 CREATE POLICY "Users can insert own chats" ON public.chat_messages FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete own chats" ON public.chat_messages FOR DELETE USING (auth.uid() = user_id);
 
+-- Hidden Notices: Users can manage their own hidden notices
+CREATE POLICY "Users can view own hidden notices" ON public.hidden_notices FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own hidden notices" ON public.hidden_notices FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own hidden notices" ON public.hidden_notices FOR DELETE USING (auth.uid() = user_id);
+
 -- ==============================================================================
 -- Indexes: the app's most frequent queries filter/sort by these columns. Without
 -- them, watchlist_hits and saved_tenders scans get slower as rows accumulate.
@@ -183,6 +202,7 @@ CREATE INDEX IF NOT EXISTS idx_watchlist_hits_pending_email ON public.watchlist_
 CREATE INDEX IF NOT EXISTS idx_saved_tenders_user_updated ON public.saved_tenders (user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_watchlists_active ON public.watchlists (active) WHERE active = true;
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_session ON public.chat_messages (user_id, session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_hidden_notices_user ON public.hidden_notices (user_id);
 
 -- ==============================================================================
 -- Atomic counter/multi-step RPCs

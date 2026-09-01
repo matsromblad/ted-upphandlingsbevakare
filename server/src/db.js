@@ -61,6 +61,8 @@ localDb.exec(`
     preferred_cpv TEXT DEFAULT '["71300000", "71240000", "71320000", "71541000", "72224000"]',
     preferred_countries TEXT DEFAULT '["SWE"]',
     min_value INTEGER DEFAULT 0,
+    role TEXT DEFAULT 'user',
+    last_active_at TEXT,
     updated_at TEXT DEFAULT (datetime('now', 'localtime'))
   );
 
@@ -125,6 +127,14 @@ localDb.exec(`
     context_notice_id TEXT,
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
   );
+
+  CREATE TABLE IF NOT EXISTS hidden_notices (
+    user_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+    notice_id TEXT NOT NULL,
+    reason TEXT DEFAULT 'dismissed',
+    hidden_at TEXT DEFAULT (datetime('now', 'localtime')),
+    PRIMARY KEY (user_id, notice_id)
+  );
 `);
 
 // Safe column migrations for existing SQLite databases
@@ -136,6 +146,8 @@ function ensureColumn(table, column, definition) {
   }
 }
 
+ensureColumn('profiles', 'role', "TEXT NOT NULL DEFAULT 'user'");
+ensureColumn('profiles', 'last_active_at', 'TEXT');
 ensureColumn('watchlists', 'user_id', "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'");
 ensureColumn('watchlists', 'email_frequency', "TEXT NOT NULL DEFAULT 'daily'");
 ensureColumn('watchlists', 'last_email_sent_at', 'TEXT');
@@ -898,14 +910,21 @@ export const profileDao = {
   get: async (userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
       const { data } = await client.from('profiles').select('*').eq('id', userId).single();
+      const isMats = (data?.email || '').toLowerCase() === 'mats.romblad@wsp.com';
       if (!data || !data.company_name || data.company_name === 'Mitt Företag AB') {
         return {
           id: userId,
+          email: data?.email || '',
+          fullName: data?.full_name || '',
+          role: isMats ? 'admin' : (data?.role || 'user'),
           ...DEFAULT_COMPANY_PROFILE
         };
       }
       return {
         id: data.id,
+        email: data.email || '',
+        fullName: data.full_name || '',
+        role: isMats ? 'admin' : (data.role || 'user'),
         name: data.company_name || DEFAULT_COMPANY_PROFILE.name,
         description: data.description || DEFAULT_COMPANY_PROFILE.description,
         keywords: data.keywords || DEFAULT_COMPANY_PROFILE.keywords,
@@ -919,11 +938,17 @@ export const profileDao = {
     if (!row || !row.company_name || row.company_name === 'Mitt Företag AB') {
       return {
         id: userId,
+        email: row?.email || 'lokal@anvandare.se',
+        fullName: row?.full_name || 'Lokal Användare',
+        role: row?.role || 'admin',
         ...DEFAULT_COMPANY_PROFILE
       };
     }
     return {
       ...row,
+      email: row.email || 'lokal@anvandare.se',
+      fullName: row.full_name || 'Lokal Användare',
+      role: row.role || 'admin',
       name: row.company_name || DEFAULT_COMPANY_PROFILE.name,
       description: row.description || DEFAULT_COMPANY_PROFILE.description,
       keywords: row.keywords || DEFAULT_COMPANY_PROFILE.keywords,
@@ -1098,6 +1123,504 @@ export const chatDao = {
     }
 
     localDb.prepare('DELETE FROM chat_messages WHERE user_id = ? AND session_id = ?').run(userId, sessionId);
+  }
+};
+
+// ==============================================================================
+// HIDDEN NOTICES DAO
+// ==============================================================================
+export const hiddenNoticeDao = {
+  getAll: async (userId, client = supabaseAdmin) => {
+    if (isCloudUser(userId)) {
+      const { data, error } = await client
+        .from('hidden_notices')
+        .select('notice_id, reason, hidden_at')
+        .eq('user_id', userId)
+        .order('hidden_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(r => r.notice_id);
+    }
+
+    const rows = localDb.prepare(`
+      SELECT notice_id FROM hidden_notices
+      WHERE user_id = ?
+      ORDER BY hidden_at DESC
+    `).all(userId);
+    return rows.map(r => r.notice_id);
+  },
+
+  hide: async (userId, noticeId, reason = 'dismissed', client = supabaseAdmin) => {
+    if (isCloudUser(userId)) {
+      const { error } = await client.from('hidden_notices').upsert({
+        user_id: userId,
+        notice_id: noticeId,
+        reason: reason || 'dismissed',
+        hidden_at: new Date().toISOString()
+      });
+      if (error) throw error;
+      return;
+    }
+
+    localDb.prepare(`
+      INSERT OR REPLACE INTO hidden_notices (user_id, notice_id, reason, hidden_at)
+      VALUES (?, ?, ?, datetime('now', 'localtime'))
+    `).run(userId, noticeId, reason || 'dismissed');
+  },
+
+  unhide: async (userId, noticeId, client = supabaseAdmin) => {
+    if (isCloudUser(userId)) {
+      const { error } = await client
+        .from('hidden_notices')
+        .delete()
+        .eq('user_id', userId)
+        .eq('notice_id', noticeId);
+      if (error) throw error;
+      return;
+    }
+
+    localDb.prepare(`
+      DELETE FROM hidden_notices
+      WHERE user_id = ? AND notice_id = ?
+    `).run(userId, noticeId);
+  }
+};
+
+// ==============================================================================
+// ADMIN DAO
+// ==============================================================================
+export const adminDao = {
+  getStats: async () => {
+    if (isSupabaseConfigured) {
+      try {
+        const [
+          { count: usersCount },
+          { count: totalWatchlists },
+          { count: activeWatchlists },
+          { count: totalHits },
+          { count: unreadHits },
+          { count: savedTenders },
+          { count: chatMessages },
+          { count: hiddenNotices }
+        ] = await Promise.all([
+          supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }),
+          supabaseAdmin.from('watchlists').select('id', { count: 'exact', head: true }),
+          supabaseAdmin.from('watchlists').select('id', { count: 'exact', head: true }).eq('active', true),
+          supabaseAdmin.from('watchlist_hits').select('id', { count: 'exact', head: true }),
+          supabaseAdmin.from('watchlist_hits').select('id', { count: 'exact', head: true }).eq('is_read', false),
+          supabaseAdmin.from('saved_tenders').select('id', { count: 'exact', head: true }),
+          supabaseAdmin.from('chat_messages').select('id', { count: 'exact', head: true }),
+          supabaseAdmin.from('hidden_notices').select('notice_id', { count: 'exact', head: true })
+        ]);
+
+        return {
+          usersCount: usersCount || 0,
+          totalWatchlists: totalWatchlists || 0,
+          activeWatchlists: activeWatchlists || 0,
+          totalHits: totalHits || 0,
+          unreadHits: unreadHits || 0,
+          savedTenders: savedTenders || 0,
+          chatMessages: chatMessages || 0,
+          hiddenNotices: hiddenNotices || 0,
+          dbMode: 'Supabase PostgreSQL (Cloud med RLS)'
+        };
+      } catch (err) {
+        console.warn('[Admin DAO] Failed to get Supabase stats:', err.message);
+      }
+    }
+
+    const usersCount = localDb.prepare('SELECT count(*) as c FROM profiles').get()?.c || 0;
+    const totalWatchlists = localDb.prepare('SELECT count(*) as c FROM watchlists').get()?.c || 0;
+    const activeWatchlists = localDb.prepare('SELECT count(*) as c FROM watchlists WHERE active = 1').get()?.c || 0;
+    const totalHits = localDb.prepare('SELECT count(*) as c FROM watchlist_hits').get()?.c || 0;
+    const unreadHits = localDb.prepare('SELECT count(*) as c FROM watchlist_hits WHERE is_read = 0').get()?.c || 0;
+    const savedTenders = localDb.prepare('SELECT count(*) as c FROM saved_tenders').get()?.c || 0;
+    const chatMessages = localDb.prepare('SELECT count(*) as c FROM chat_messages').get()?.c || 0;
+    const hiddenNotices = localDb.prepare('SELECT count(*) as c FROM hidden_notices').get()?.c || 0;
+
+    return {
+      usersCount: Math.max(1, usersCount),
+      totalWatchlists,
+      activeWatchlists,
+      totalHits,
+      unreadHits,
+      savedTenders,
+      chatMessages,
+      hiddenNotices,
+      dbMode: 'SQLite (Lokal lagring)'
+    };
+  },
+
+  getAllUsers: async () => {
+    if (isSupabaseConfigured) {
+      try {
+        const { data: profiles, error } = await supabaseAdmin
+          .from('profiles')
+          .select('id, email, full_name, company_name, role, created_at, updated_at, last_active_at')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Query counts per user
+        const { data: watchlists } = await supabaseAdmin.from('watchlists').select('id, user_id');
+        const { data: hits } = await supabaseAdmin.from('watchlist_hits').select('id, user_id');
+        const { data: tenders } = await supabaseAdmin.from('saved_tenders').select('id, user_id');
+
+        const wlCounts = {};
+        (watchlists || []).forEach(w => { wlCounts[w.user_id] = (wlCounts[w.user_id] || 0) + 1; });
+
+        const hitCounts = {};
+        (hits || []).forEach(h => { hitCounts[h.user_id] = (hitCounts[h.user_id] || 0) + 1; });
+
+        const tenderCounts = {};
+        (tenders || []).forEach(t => { tenderCounts[t.user_id] = (tenderCounts[t.user_id] || 0) + 1; });
+
+        return (profiles || []).map(p => {
+          const email = p.email || '';
+          const isMats = email.toLowerCase() === 'mats.romblad@wsp.com';
+          return {
+            id: p.id,
+            email: p.email || '',
+            fullName: p.full_name || email.split('@')[0] || 'Användare',
+            companyName: p.company_name || 'WSP Sverige AB',
+            role: isMats ? 'admin' : (p.role || 'user'),
+            createdAt: p.created_at || new Date().toISOString(),
+            lastActiveAt: p.last_active_at || p.updated_at || p.created_at,
+            watchlistsCount: wlCounts[p.id] || 0,
+            hitsCount: hitCounts[p.id] || 0,
+            tendersCount: tenderCounts[p.id] || 0
+          };
+        });
+      } catch (err) {
+        console.warn('[Admin DAO] Error in getAllUsers Supabase:', err.message);
+      }
+    }
+
+    try {
+      const rows = localDb.prepare(`
+        SELECT 
+          p.id, p.email, p.full_name, p.company_name, p.role, p.last_active_at, p.updated_at,
+          (SELECT COUNT(*) FROM watchlists w WHERE w.user_id = p.id) as watchlists_count,
+          (SELECT COUNT(*) FROM watchlist_hits h WHERE h.user_id = p.id) as hits_count,
+          (SELECT COUNT(*) FROM saved_tenders s WHERE s.user_id = p.id) as tenders_count
+        FROM profiles p
+      `).all();
+
+      if (rows && rows.length > 0) {
+        return rows.map(r => ({
+          id: r.id,
+          email: r.email || 'lokal@anvandare.se',
+          fullName: r.full_name || 'Lokal Användare',
+          companyName: r.company_name || 'WSP Sverige AB (BIM-enheten)',
+          role: r.role || 'admin',
+          createdAt: r.updated_at || new Date().toISOString(),
+          lastActiveAt: r.last_active_at || r.updated_at,
+          watchlistsCount: r.watchlists_count || 0,
+          hitsCount: r.hits_count || 0,
+          tendersCount: r.tenders_count || 0
+        }));
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    return [
+      {
+        id: '1c041146-f711-4dc3-bf0c-3c30a7c0625a',
+        email: 'mats.romblad@wsp.com',
+        fullName: 'Mats Romblad',
+        companyName: 'WSP Sverige AB (BIM-enheten)',
+        role: 'admin',
+        createdAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+        watchlistsCount: 2,
+        hitsCount: 12,
+        tendersCount: 3
+      }
+    ];
+  },
+
+  updateUserRole: async (userId, role) => {
+    if (isCloudUser(userId)) {
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ role, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (error) throw error;
+      return { success: true, userId, role };
+    }
+
+    localDb.prepare('UPDATE profiles SET role = ?, updated_at = datetime("now", "localtime") WHERE id = ?').run(role, userId);
+    return { success: true, userId, role };
+  },
+
+  updateUserProfileAdmin: async (userId, data) => {
+    if (isCloudUser(userId)) {
+      const patch = {};
+      if (data.fullName !== undefined) patch.full_name = data.fullName;
+      if (data.companyName !== undefined) patch.company_name = data.companyName;
+      if (data.email !== undefined) patch.email = data.email;
+      if (data.role !== undefined) patch.role = data.role;
+      patch.updated_at = new Date().toISOString();
+
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update(patch)
+        .eq('id', userId);
+      if (error) throw error;
+      return { success: true, userId };
+    }
+
+    const existing = localDb.prepare('SELECT * FROM profiles WHERE id = ?').get(userId);
+    if (existing) {
+      localDb.prepare(`
+        UPDATE profiles SET 
+          full_name = ?, company_name = ?, email = ?, role = ?, updated_at = datetime("now", "localtime")
+        WHERE id = ?
+      `).run(
+        data.fullName !== undefined ? data.fullName : existing.full_name,
+        data.companyName !== undefined ? data.companyName : existing.company_name,
+        data.email !== undefined ? data.email : existing.email,
+        data.role !== undefined ? data.role : existing.role,
+        userId
+      );
+    } else {
+      localDb.prepare(`
+        INSERT INTO profiles (id, full_name, company_name, email, role, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime("now", "localtime"))
+      `).run(userId, data.fullName || '', data.companyName || '', data.email || '', data.role || 'user');
+    }
+    return { success: true, userId };
+  },
+
+  deleteUser: async (userId) => {
+    if (isCloudUser(userId)) {
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(userId);
+      } catch (e) {
+        console.warn('[Admin DAO] Auth delete failed, deleting from tables directly:', e.message);
+      }
+      await supabaseAdmin.from('profiles').delete().eq('id', userId);
+      return { success: true, userId };
+    }
+
+    localDb.prepare('DELETE FROM profiles WHERE id = ?').run(userId);
+    localDb.prepare('DELETE FROM watchlists WHERE user_id = ?').run(userId);
+    localDb.prepare('DELETE FROM watchlist_hits WHERE user_id = ?').run(userId);
+    localDb.prepare('DELETE FROM saved_tenders WHERE user_id = ?').run(userId);
+    localDb.prepare('DELETE FROM chat_messages WHERE user_id = ?').run(userId);
+    localDb.prepare('DELETE FROM hidden_notices WHERE user_id = ?').run(userId);
+    return { success: true, userId };
+  },
+
+  getAllWatchlists: async () => {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('watchlists')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Fetch user profiles for display
+        const userIds = [...new Set((data || []).map(w => w.user_id))];
+        let profiles = [];
+        if (userIds.length > 0) {
+          const { data: profData } = await supabaseAdmin
+            .from('profiles')
+            .select('id, email, full_name, company_name')
+            .in('id', userIds);
+          profiles = profData || [];
+        }
+
+        const profileMap = {};
+        profiles.forEach(p => { profileMap[p.id] = p; });
+
+        return (data || []).map(w => {
+          const prof = profileMap[w.user_id];
+          return {
+            id: w.id,
+            userId: w.user_id,
+            userName: prof?.full_name || prof?.email?.split('@')[0] || 'Okänd användare',
+            userEmail: prof?.email || '',
+            companyName: prof?.company_name || '',
+            name: w.name,
+            query: w.query,
+            filters: typeof w.filters_json === 'string' ? JSON.parse(w.filters_json || '{}') : (w.filters_json || {}),
+            active: Boolean(w.active),
+            intervalMinutes: w.interval_minutes,
+            emailFrequency: w.email_frequency || 'daily',
+            lastEmailSentAt: w.last_email_sent_at,
+            lastRunAt: w.last_run_at,
+            lastHitCount: w.last_hit_count || 0,
+            newCount: w.new_count || 0,
+            createdAt: w.created_at
+          };
+        });
+      } catch (err) {
+        console.warn('[Admin DAO] Error in getAllWatchlists Supabase:', err.message);
+      }
+    }
+
+    try {
+      const rows = localDb.prepare(`
+        SELECT w.*, p.email as user_email, p.full_name as user_name, p.company_name
+        FROM watchlists w
+        LEFT JOIN profiles p ON w.user_id = p.id
+        ORDER BY w.created_at DESC
+      `).all();
+
+      return (rows || []).map(w => ({
+        id: w.id,
+        userId: w.user_id,
+        userName: w.user_name || 'Lokal Användare',
+        userEmail: w.user_email || 'lokal@anvandare.se',
+        companyName: w.company_name || 'WSP Sverige AB (BIM-enheten)',
+        name: w.name,
+        query: w.query,
+        filters: JSON.parse(w.filters_json || '{}'),
+        active: Boolean(w.active),
+        intervalMinutes: w.interval_minutes,
+        emailFrequency: w.email_frequency || 'daily',
+        lastEmailSentAt: w.last_email_sent_at,
+        lastRunAt: w.last_run_at,
+        lastHitCount: w.last_hit_count || 0,
+        newCount: w.new_count || 0,
+        createdAt: w.created_at
+      }));
+    } catch (e) {
+      return [];
+    }
+  },
+
+  toggleWatchlist: async (watchlistId, active) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabaseAdmin
+        .from('watchlists')
+        .update({ active: Boolean(active) })
+        .eq('id', watchlistId);
+      if (error) throw error;
+      return { success: true, watchlistId, active: Boolean(active) };
+    }
+
+    localDb.prepare('UPDATE watchlists SET active = ? WHERE id = ?').run(active ? 1 : 0, watchlistId);
+    return { success: true, watchlistId, active: Boolean(active) };
+  },
+
+  deleteWatchlist: async (watchlistId) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabaseAdmin.from('watchlists').delete().eq('id', watchlistId);
+      if (error) throw error;
+      return { success: true, watchlistId };
+    }
+
+    localDb.prepare('DELETE FROM watchlists WHERE id = ?').run(watchlistId);
+    localDb.prepare('DELETE FROM watchlist_hits WHERE watchlist_id = ?').run(watchlistId);
+    return { success: true, watchlistId };
+  },
+
+  cleanupHits: async (days = 30) => {
+    const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('watchlist_hits')
+        .delete()
+        .lt('discovered_at', cutoffDate)
+        .select('id');
+      if (error) throw error;
+      return { success: true, deletedCount: data?.length || 0, days };
+    }
+
+    const info = localDb.prepare("DELETE FROM watchlist_hits WHERE datetime(discovered_at) < datetime('now', '-' || ? || ' days')").run(days);
+    return { success: true, deletedCount: info.changes || 0, days };
+  },
+
+  cleanupChats: async (days = 30) => {
+    const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabaseAdmin
+        .from('chat_messages')
+        .delete()
+        .lt('created_at', cutoffDate)
+        .select('id');
+      if (error) throw error;
+      return { success: true, deletedCount: data?.length || 0, days };
+    }
+
+    const info = localDb.prepare("DELETE FROM chat_messages WHERE datetime(created_at) < datetime('now', '-' || ? || ' days')").run(days);
+    return { success: true, deletedCount: info.changes || 0, days };
+  },
+
+  releaseCronLock: async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseAdmin.from('cron_locks').delete().neq('id', '');
+        return { success: true, message: 'Cron-lås frigjorda i databasen' };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+    return { success: true, message: 'Lokal instans körs utan delade cron-lås' };
+  },
+
+  exportAll: async () => {
+    if (isSupabaseConfigured) {
+      const [
+        { data: profiles },
+        { data: watchlists },
+        { data: hits },
+        { data: tenders },
+        { data: hidden }
+      ] = await Promise.all([
+        supabaseAdmin.from('profiles').select('*'),
+        supabaseAdmin.from('watchlists').select('*'),
+        supabaseAdmin.from('watchlist_hits').select('*'),
+        supabaseAdmin.from('saved_tenders').select('*'),
+        supabaseAdmin.from('hidden_notices').select('*')
+      ]);
+
+      return {
+        exportedAt: new Date().toISOString(),
+        system: 'WSP TED Bevakare',
+        databaseMode: 'Supabase PostgreSQL',
+        counts: {
+          profiles: profiles?.length || 0,
+          watchlists: watchlists?.length || 0,
+          hits: hits?.length || 0,
+          savedTenders: tenders?.length || 0,
+          hiddenNotices: hidden?.length || 0
+        },
+        profiles: profiles || [],
+        watchlists: watchlists || [],
+        watchlistHits: hits || [],
+        savedTenders: tenders || [],
+        hiddenNotices: hidden || []
+      };
+    }
+
+    const profiles = localDb.prepare('SELECT * FROM profiles').all();
+    const watchlists = localDb.prepare('SELECT * FROM watchlists').all();
+    const hits = localDb.prepare('SELECT * FROM watchlist_hits').all();
+    const tenders = localDb.prepare('SELECT * FROM saved_tenders').all();
+    const hidden = localDb.prepare('SELECT * FROM hidden_notices').all();
+
+    return {
+      exportedAt: new Date().toISOString(),
+      system: 'WSP TED Bevakare',
+      databaseMode: 'SQLite',
+      counts: {
+        profiles: profiles?.length || 0,
+        watchlists: watchlists?.length || 0,
+        hits: hits?.length || 0,
+        savedTenders: tenders?.length || 0,
+        hiddenNotices: hidden?.length || 0
+      },
+      profiles: profiles || [],
+      watchlists: watchlists || [],
+      watchlistHits: hits || [],
+      savedTenders: tenders || [],
+      hiddenNotices: hidden || []
+    };
   }
 };
 

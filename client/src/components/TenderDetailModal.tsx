@@ -36,7 +36,9 @@ import {
   Layers,
   Share2,
   Printer,
-  Download
+  Download,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Notice, SavedTender, AIAnalysis, TenderStatus, Priority, RequestedRole, ParsedDocument } from '../types';
 import { api } from '../api';
@@ -56,6 +58,8 @@ interface TenderDetailModalProps {
   onOpenChatWithNotice: (notice: Notice) => void;
   savedTenders: SavedTender[];
   onTenderUpdated: () => void;
+  isHidden?: boolean;
+  onToggleHideNotice?: (noticeId: string) => void;
 }
 
 export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
@@ -64,7 +68,9 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
   onClose,
   onOpenChatWithNotice,
   savedTenders,
-  onTenderUpdated
+  onTenderUpdated,
+  isHidden = false,
+  onToggleHideNotice
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'ai-analysis' | 'internal'>('overview');
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
@@ -255,6 +261,11 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700">
                   TED: {notice.publicationNumber}
                 </span>
+                {isHidden && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-slate-200 dark:bg-slate-750 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-1">
+                    <EyeOff className="w-3 h-3" /> Dold av dig
+                  </span>
+                )}
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 uppercase">
                   {notice.formType}
                 </span>
@@ -330,6 +341,21 @@ export const TenderDetailModal: React.FC<TenderDetailModalProps> = ({
                 <MessageSquare className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                 Fråga MiniMax Copilot
               </button>
+
+              {onToggleHideNotice && (
+                <button
+                  onClick={() => onToggleHideNotice(notice.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                    isHidden
+                      ? 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-300'
+                      : 'bg-white dark:bg-slate-850 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  title={isHidden ? 'Gör denna upphandling synlig igen' : 'Dölj upphandlingen (visas helt gråad i listor)'}
+                >
+                  {isHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  {isHidden ? 'Gör synlig' : 'Dölj upphandling'}
+                </button>
+              )}
 
               {aiAnalysis && (
                 <>

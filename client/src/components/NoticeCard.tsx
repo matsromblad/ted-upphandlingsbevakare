@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bookmark, ExternalLink, Building, MapPin, Coins, Globe2 } from 'lucide-react';
+import { Bookmark, ExternalLink, Building, MapPin, Coins, Globe2, EyeOff, Eye } from 'lucide-react';
 import { Notice } from '../types';
 import { getDeadlineInfo } from '../utils/dateUtils';
 import { DeadlineBadge } from './DeadlineBadge';
@@ -13,6 +13,10 @@ interface NoticeCardProps {
   extraBadges?: React.ReactNode;
   /** Highlights the card border/background as an unread watchlist hit */
   isUnread?: boolean;
+  /** True if the tender has been dismissed / hidden by the user */
+  isHidden?: boolean;
+  /** Callback to toggle hidden status */
+  onToggleHide?: (notice: Notice, e: React.MouseEvent) => void;
 }
 
 export const NoticeCard: React.FC<NoticeCardProps> = ({
@@ -21,10 +25,51 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
   onSave,
   onOpenDetail,
   extraBadges,
-  isUnread = false
+  isUnread = false,
+  isHidden = false,
+  onToggleHide
 }) => {
   const dlInfo = getDeadlineInfo(notice.deadline, notice.deadlineStatus, notice.daysRemaining);
   const tenderPortalUrl = notice.links?.submission || notice.links?.documents;
+
+  if (isHidden) {
+    return (
+      <div
+        onClick={() => onOpenDetail(notice)}
+        className="bg-slate-100/70 dark:bg-slate-900/60 rounded-2xl p-3 sm:p-3.5 border border-dashed border-slate-300 dark:border-slate-800 opacity-40 hover:opacity-85 transition-all cursor-pointer flex items-center justify-between gap-3 group select-none"
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center gap-1 flex-shrink-0">
+            <EyeOff className="w-2.5 h-2.5" /> Dold
+          </span>
+          <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">
+            {notice.publicationNumber}
+          </span>
+          <span className="text-xs text-slate-600 dark:text-slate-400 truncate italic">
+            {notice.title}
+          </span>
+          {notice.buyer && (
+            <span className="text-xs text-slate-400 truncate hidden md:inline">
+              • {notice.buyer}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          {onToggleHide && (
+            <button
+              onClick={(e) => onToggleHide(notice, e)}
+              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 shadow-sm"
+              title="Gör denna upphandling synlig igen"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Gör synlig</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -127,7 +172,17 @@ export const NoticeCard: React.FC<NoticeCardProps> = ({
       <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
         <span className="text-slate-400">Publ: {notice.publicationDate}</span>
 
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {onToggleHide && (
+            <button
+              onClick={(e) => onToggleHide(notice, e)}
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              title="Dölj upphandling"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {tenderPortalUrl && (
             <a
               href={tenderPortalUrl}

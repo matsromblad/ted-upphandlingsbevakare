@@ -21,7 +21,9 @@ import {
   HelpCircle,
   AlertCircle,
   X,
-  RotateCcw
+  RotateCcw,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Notice, NoticeFilters, FormType, DatePreset, SavedTender } from '../types';
 import { api } from '../api';
@@ -37,6 +39,8 @@ interface SearchViewProps {
   onTenderSaved: () => void;
   initialFilters?: NoticeFilters;
   onWatchlistCreated: () => void;
+  hiddenNoticeIds?: Set<string>;
+  onToggleHideNotice?: (notice: Notice | string, e?: React.MouseEvent) => void;
 }
 
 export const SearchView: React.FC<SearchViewProps> = ({
@@ -44,7 +48,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
   savedTenders,
   onTenderSaved,
   initialFilters,
-  onWatchlistCreated
+  onWatchlistCreated,
+  hiddenNoticeIds,
+  onToggleHideNotice
 }) => {
   // Search Filters state
   const [keywords, setKeywords] = useState(initialFilters?.keywords || '');
@@ -73,6 +79,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [generatedQuery, setGeneratedQuery] = useState('');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
   const [error, setError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState<boolean>(true);
 
   // Modals
   const [isCpvModalOpen, setIsCpvModalOpen] = useState(false);
@@ -269,6 +276,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const isTenderSaved = (noticeId: string) => {
     return savedTenders.some(t => t.notice_id === noticeId);
   };
+
+  const hiddenCountInResults = notices.filter(n => hiddenNoticeIds?.has(n.id)).length;
+  const displayedNotices = React.useMemo(() => {
+    if (showHidden) return notices;
+    return notices.filter(n => !hiddenNoticeIds?.has(n.id));
+  }, [notices, showHidden, hiddenNoticeIds]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -632,6 +645,21 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {hiddenNoticeIds && hiddenNoticeIds.size > 0 && (
+            <button
+              onClick={() => setShowHidden(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                showHidden
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+              }`}
+              title={showHidden ? 'Klicka för att helt filtrera bort dolda upphandlingar från listan' : 'Klicka för att visa dolda upphandlingar som gråmarkerade'}
+            >
+              {showHidden ? <Eye className="w-3.5 h-3.5 text-slate-500" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+              <span>{showHidden ? `Visar dolda (${hiddenCountInResults})` : `Dölj dolda (${hiddenCountInResults})`}</span>
+            </button>
+          )}
+
           {/* View mode switcher */}
           <div className="flex items-center bg-slate-200 dark:bg-slate-800 p-1 rounded-xl">
             <button
@@ -668,36 +696,42 @@ export const SearchView: React.FC<SearchViewProps> = ({
       )}
 
       {/* Results Content */}
-      {notices.length === 0 && !loading && !error ? (
+      {displayedNotices.length === 0 && !loading && !error ? (
         <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
             <Search className="w-6 h-6" />
           </div>
           <h3 className="font-bold text-slate-900 dark:text-white">Inga upphandlingar matchade dina sökkriterier</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-            Prova att bredda sökningen, ta bort specifika sökord eller ändra datumintervall för att få fler träffar.
+            {notices.length > 0 && !showHidden
+              ? 'Alla upphandlingar på denna sida är dolda av dig. Klicka på knappen "Dölj dolda" ovan för att visa dem igen.'
+              : 'Prova att bredda sökningen, ta bort specifika sökord eller ändra datumintervall för att få fler träffar.'}
           </p>
         </div>
       ) : viewMode === 'card' ? (
         /* CARD VIEW */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
-          {notices.map((notice) => (
+          {displayedNotices.map((notice) => (
             <NoticeCard
               key={notice.id}
               notice={notice}
               isSaved={isTenderSaved(notice.id)}
               onSave={handleSaveToPipeline}
               onOpenDetail={onOpenNoticeDetail}
+              isHidden={Boolean(hiddenNoticeIds?.has(notice.id))}
+              onToggleHide={onToggleHideNotice}
             />
           ))}
         </div>
       ) : (
         /* TABLE VIEW */
         <NoticeTable
-          notices={notices}
+          notices={displayedNotices}
           isTenderSaved={isTenderSaved}
           onSave={handleSaveToPipeline}
           onOpenDetail={onOpenNoticeDetail}
+          isHidden={(id) => Boolean(hiddenNoticeIds?.has(id))}
+          onToggleHide={onToggleHideNotice}
         />
       )}
 
