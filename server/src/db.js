@@ -135,6 +135,16 @@ localDb.exec(`
     hidden_at TEXT DEFAULT (datetime('now', 'localtime')),
     PRIMARY KEY (user_id, notice_id)
   );
+
+  CREATE TABLE IF NOT EXISTS team_members (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT DEFAULT '',
+    role TEXT DEFAULT 'Kollega',
+    created_by TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+  );
 `);
 
 // Safe column migrations for existing SQLite databases
@@ -1025,50 +1035,234 @@ export const profileDao = {
   },
 
   getActiveUsers: async () => {
-    const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+    const usersMap = new Map();
 
     if (isSupabaseConfigured) {
+      // 1. Supabase profiles (registered accounts)
       try {
         const { data, error } = await supabaseAdmin
           .from('profiles')
-          .select('id, email, full_name, last_active_at, updated_at, created_at')
+          .select('id, email, full_name, role, last_active_at, updated_at, created_at')
           .order('full_name', { ascending: true });
 
-        if (!error && data && data.length > 0) {
-          return data.map(p => ({
-            id: p.id,
-            name: p.full_name || p.email?.split('@')[0] || 'Användare',
-            email: p.email || '',
-            lastActiveAt: p.last_active_at || p.updated_at || p.created_at
-          }));
+        if (!error && data) {
+          for (const p of data) {
+            const key = (p.email || p.id).toLowerCase();
+            usersMap.set(key, {
+              id: p.id,
+              name: p.full_name || p.email?.split('@')[0] || 'Användare',
+              email: p.email || '',
+              role: p.role === 'admin' ? 'Administratör' : 'Registrerad användare',
+              source: 'registered',
+              lastActiveAt: p.last_active_at || p.updated_at || p.created_at
+            });
+          }
         }
       } catch (e) {
         console.warn('[Profile DAO] Error loading active users from Supabase:', e.message);
       }
-    }
 
-    try {
-      const rows = localDb.prepare(`
-        SELECT id, email, full_name, last_active_at, updated_at
-        FROM profiles
-        ORDER BY full_name ASC
-      `).all();
+      // 2. Supabase team_members (colleagues directory)
+      try {
+        const { data: tmData, error: tmError } = await supabaseAdmin
+          .from('team_members')
+          .select('id, name, email, role, created_at, updated_at')
+          .order('name', { ascending: true });
 
-      if (rows && rows.length > 0) {
-        return rows.map(r => ({
-          id: r.id,
-          name: r.full_name || r.email?.split('@')[0] || 'Lokal Användare',
-          email: r.email || '',
-          lastActiveAt: r.last_active_at || r.updated_at
-        }));
+        if (!tmError && tmData) {
+          for (const tm of tmData) {
+            const key = (tm.email || tm.name).toLowerCase();
+            if (!usersMap.has(key)) {
+              usersMap.set(key, {
+                id: tm.id,
+                name: tm.name,
+                email: tm.email || '',
+                role: tm.role || 'Kollega',
+                source: 'team_member',
+                lastActiveAt: tm.updated_at || tm.created_at
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Profile DAO] Error loading team_members from Supabase:', e.message);
       }
-    } catch (e) {
-      // Local fallback
+
+      // 3. Saved tenders assignees (historical assignments)
+      try {
+        const { data: stData } = await supabaseAdmin
+          .from('saved_tenders')
+          .select('assigned_to')
+          .not('assigned_to', 'is', null)
+          .neq('assigned_to', '');
+
+        if (stData) {
+          for (const st of stData) {
+            const name = st.assigned_to?.trim();
+            if (name) {
+              const nameLower = name.toLowerCase();
+              const alreadyExists = Array.from(usersMap.values()).some(
+                u => u.name.toLowerCase() === nameLower || (u.email && u.email.toLowerCase() === nameLower)
+              );
+              if (!alreadyExists) {
+                usersMap.set(`assignee-${nameLower}`, {
+                  id: `assignee-${nameLower}`,
+                  name: name,
+                  email: '',
+                  role: 'Tidigare tilldelad',
+                  source: 'history',
+                  lastActiveAt: new Date().toISOString()
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback ignore
+      }
+    } else {
+      // Local SQLite fallback
+      try {
+        const pRows = localDb.prepare('SELECT id, email, full_name, last_active_at, updated_at FROM profiles').all();
+        for (const p of pRows) {
+          usersMap.set((p.email || p.id).toLowerCase(), {
+            id: p.id,
+            name: p.full_name || p.email?.split('@')[0] || 'Lokal Användare',
+            email: p.email || '',
+            role: 'Registrerad användare',
+            source: 'registered',
+            lastActiveAt: p.last_active_at || p.updated_at
+          });
+        }
+      } catch (e) {}
+
+      try {
+        const tmRows = localDb.prepare('SELECT id, name, email, role, updated_at, created_at FROM team_members').all();
+        for (const tm of tmRows) {
+          const key = (tm.email || tm.name).toLowerCase();
+          if (!usersMap.has(key)) {
+            usersMap.set(key, {
+              id: tm.id,
+              name: tm.name,
+              email: tm.email || '',
+              role: tm.role || 'Kollega',
+              source: 'team_member',
+              lastActiveAt: tm.updated_at || tm.created_at
+            });
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const stRows = localDb.prepare("SELECT DISTINCT assigned_to FROM saved_tenders WHERE assigned_to IS NOT NULL AND assigned_to != ''").all();
+        for (const st of stRows) {
+          const name = st.assigned_to?.trim();
+          if (name) {
+            const nameLower = name.toLowerCase();
+            const alreadyExists = Array.from(usersMap.values()).some(
+              u => u.name.toLowerCase() === nameLower || (u.email && u.email.toLowerCase() === nameLower)
+            );
+            if (!alreadyExists) {
+              usersMap.set(`assignee-${nameLower}`, {
+                id: `assignee-${nameLower}`,
+                name: name,
+                email: '',
+                role: 'Tidigare tilldelad',
+                source: 'history',
+                lastActiveAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+      } catch (e) {}
     }
 
-    return [
-      { id: '1c041146-f711-4dc3-bf0c-3c30a7c0625a', name: 'Mats Romblad', email: 'mats.romblad@wsp.com', lastActiveAt: new Date().toISOString() }
-    ];
+    const list = Array.from(usersMap.values());
+    if (list.length === 0) {
+      list.push({
+        id: '1c041146-f711-4dc3-bf0c-3c30a7c0625a',
+        name: 'Mats Romblad',
+        email: 'mats.romblad@wsp.com',
+        role: 'Administratör',
+        source: 'registered',
+        lastActiveAt: new Date().toISOString()
+      });
+    }
+
+    return list.sort((a, b) => a.name.localeCompare(b.name, 'sv'));
+  }
+};
+
+// ==============================================================================
+// TEAM MEMBERS DAO
+// ==============================================================================
+export const teamMemberDao = {
+  getAll: async (client = supabaseAdmin) => {
+    if (isSupabaseConfigured && client) {
+      try {
+        const { data, error } = await client
+          .from('team_members')
+          .select('*')
+          .order('name', { ascending: true });
+        if (!error && data) return data;
+      } catch (e) {
+        console.warn('[TeamMember DAO] Error loading team members from Supabase:', e.message);
+      }
+    }
+    return localDb.prepare('SELECT * FROM team_members ORDER BY name ASC').all();
+  },
+
+  add: async ({ name, email = '', role = 'Kollega', userId = null }, client = supabaseAdmin) => {
+    const id = 'tm-' + crypto.randomUUID().slice(0, 8);
+    const now = new Date().toISOString();
+    const cleanName = (name || '').trim();
+    const cleanEmail = (email || '').trim();
+    const cleanRole = (role || 'Kollega').trim();
+
+    if (isSupabaseConfigured && client) {
+      try {
+        const { data, error } = await client
+          .from('team_members')
+          .insert({
+            id,
+            name: cleanName,
+            email: cleanEmail,
+            role: cleanRole,
+            created_by: userId && isCloudUser(userId) ? userId : null,
+            created_at: now,
+            updated_at: now
+          })
+          .select()
+          .single();
+        if (!error && data) return data;
+        if (error) console.warn('[TeamMember DAO] Supabase insert warning:', error.message);
+      } catch (e) {
+        console.warn('[TeamMember DAO] Supabase insert error:', e.message);
+      }
+    }
+
+    localDb.prepare(`
+      INSERT INTO team_members (id, name, email, role, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, cleanName, cleanEmail, cleanRole, userId || '', now, now);
+
+    return { id, name: cleanName, email: cleanEmail, role: cleanRole, created_at: now, updated_at: now };
+  },
+
+  delete: async (id, client = supabaseAdmin) => {
+    if (isSupabaseConfigured && client) {
+      try {
+        const { error } = await client
+          .from('team_members')
+          .delete()
+          .eq('id', id);
+        if (!error) return true;
+      } catch (e) {
+        console.warn('[TeamMember DAO] Supabase delete error:', e.message);
+      }
+    }
+    localDb.prepare('DELETE FROM team_members WHERE id = ?').run(id);
+    return true;
   }
 };
 

@@ -10,7 +10,12 @@ import {
   AIAnalysis,
   ParsedDocument,
   CpvCategory,
-  TeamMember
+  TeamMember,
+  AdminStats,
+  AdminUser,
+  AdminWatchlist,
+  SystemHealthResponse,
+  EmailStatusInfo
 } from './types';
 import { getAccessToken } from './supabaseClient';
 
@@ -329,6 +334,31 @@ export const api = {
     return res.json();
   },
 
+  getTeamMembers: async (): Promise<{ success: boolean; members: TeamMember[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/team-members`, { headers });
+    return res.json();
+  },
+
+  addTeamMember: async (member: { name: string; email?: string; role?: string }): Promise<{ success: boolean; member?: TeamMember; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/team-members`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(member)
+    });
+    return res.json();
+  },
+
+  deleteTeamMember: async (id: string): Promise<{ success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/team-members/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers
+    });
+    return res.json();
+  },
+
   // Hidden Notices (User-Dismissed)
   getHiddenNotices: async (): Promise<{ success: boolean; hiddenNotices: string[]; error?: string }> => {
     const headers = await getHeaders();
@@ -353,5 +383,177 @@ export const api = {
       headers
     });
     return res.json();
+  },
+
+  // ==========================================
+  // Admin Methods
+  // ==========================================
+  adminGetStats: async (): Promise<{ success: boolean; stats: AdminStats; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/stats`, { headers });
+    return res.json();
+  },
+
+  adminGetHealth: async (): Promise<SystemHealthResponse & { error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/health`, { headers });
+    return res.json();
+  },
+
+  adminGetUsers: async (): Promise<{ success: boolean; users: AdminUser[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/users`, { headers });
+    return res.json();
+  },
+
+  adminCreateUser: async (data: { email: string; password?: string; fullName?: string; companyName?: string; role?: 'admin' | 'user' }): Promise<{ success: boolean; userId?: string; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/users`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  adminUpdateUserRole: async (userId: string, role: 'admin' | 'user'): Promise<{ success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/role`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ role })
+    });
+    return res.json();
+  },
+
+  adminUpdateUserProfile: async (userId: string, data: Partial<AdminUser>): Promise<{ success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/profile`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  adminDeleteUser: async (userId: string): Promise<{ success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      headers
+    });
+    return res.json();
+  },
+
+  adminGetWatchlists: async (): Promise<{ success: boolean; watchlists: AdminWatchlist[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/watchlists`, { headers });
+    return res.json();
+  },
+
+  adminRunWatchlist: async (id: string): Promise<{ success: boolean; result?: any; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/watchlists/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      headers
+    });
+    return res.json();
+  },
+
+  adminToggleWatchlist: async (id: string, active: boolean): Promise<{ success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/watchlists/${encodeURIComponent(id)}/toggle`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ active })
+    });
+    return res.json();
+  },
+
+  adminDeleteWatchlist: async (id: string): Promise<{ success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/watchlists/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers
+    });
+    return res.json();
+  },
+
+  adminRunCron: async (): Promise<{ success: boolean; count?: number; results?: any[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/cron/run`, {
+      method: 'POST',
+      headers
+    });
+    return res.json();
+  },
+
+  adminGetEmailStatus: async (): Promise<EmailStatusInfo & { success: boolean; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/email/status`, { headers });
+    return res.json();
+  },
+
+  adminSendTestEmail: async (targetEmail: string): Promise<{ success: boolean; message?: string; messageId?: string; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/email/test`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ targetEmail })
+    });
+    return res.json();
+  },
+
+  adminTestTed: async (data: { query?: string; filters?: NoticeFilters; limit?: number }): Promise<{ success: boolean; latencyMs?: number; totalCount?: number; notices?: Notice[]; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/test/ted`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  adminTestMinimax: async (prompt?: string): Promise<{ success: boolean; reply?: string; latencyMs?: number; model?: string; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/test/minimax`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt })
+    });
+    return res.json();
+  },
+
+  adminCleanupHits: async (days = 30): Promise<{ success: boolean; deletedCount?: number; days?: number; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/maintenance/cleanup-hits`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ days })
+    });
+    return res.json();
+  },
+
+  adminCleanupChats: async (days = 30): Promise<{ success: boolean; deletedCount?: number; days?: number; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/maintenance/cleanup-chats`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ days })
+    });
+    return res.json();
+  },
+
+  adminReleaseCronLock: async (): Promise<{ success: boolean; message?: string; error?: string }> => {
+    const headers = await getHeaders();
+    const res = await fetch(`${API_BASE}/admin/maintenance/release-lock`, {
+      method: 'POST',
+      headers
+    });
+    return res.json();
+  },
+
+  adminExportAllUrl: (): string => {
+    return `${API_BASE}/admin/export/all`;
   }
 };

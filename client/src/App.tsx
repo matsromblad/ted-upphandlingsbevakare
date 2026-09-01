@@ -9,6 +9,7 @@ import { WatchlistsView } from './views/WatchlistsView';
 import { PipelineView } from './views/PipelineView';
 import { CpvAndProfileView } from './views/CpvAndProfileView';
 import { AboutView } from './views/AboutView';
+import { AdminView } from './views/AdminView';
 import { Notice, SavedTender } from './types';
 import { api } from './api';
 import { supabase, isSupabaseConfigured, subscribeSupabaseConfig, ensureSupabaseClient } from './supabaseClient';
@@ -22,9 +23,9 @@ function getInitialNavigationState() {
   const requestedTab = params.get('tab');
 
   return {
-    view: (requestedView === 'watchlists' || requestedView === 'pipeline' || requestedView === 'cpv-profile' || requestedView === 'about'
+    view: (requestedView === 'watchlists' || requestedView === 'pipeline' || requestedView === 'cpv-profile' || requestedView === 'about' || requestedView === 'admin'
       ? requestedView
-      : 'search') as 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about',
+      : 'search') as 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about' | 'admin',
     watchlistId: params.get('watchlist'),
     watchlistsTab: requestedTab === 'profiles' ? 'profiles' : 'feed'
   } as const;
@@ -32,7 +33,7 @@ function getInitialNavigationState() {
 
 export const App: React.FC = () => {
   const initialNavigation = getInitialNavigationState();
-  const [currentView, setCurrentView] = useState<'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about'>(initialNavigation.view);
+  const [currentView, setCurrentView] = useState<'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about' | 'admin'>(initialNavigation.view);
 
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('ted_dark_mode') === 'true' ||
@@ -233,6 +234,10 @@ export const App: React.FC = () => {
 
         {currentView === 'about' && (
           <AboutView onNavigate={setCurrentView} />
+        )}
+
+        {currentView === 'admin' && (
+          <AdminView />
         )}
       </main>
 

@@ -11,14 +11,15 @@ import {
   LogOut,
   LogIn,
   ChevronDown,
-  Info
+  Info,
+  ShieldCheck
 } from 'lucide-react';
 import { WspLogo } from './WspLogo';
 import { signOut, isSupabaseConfigured } from '../supabaseClient';
 
 interface NavbarProps {
-  currentView: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about';
-  onSelectView: (view: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about') => void;
+  currentView: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about' | 'admin';
+  onSelectView: (view: 'search' | 'watchlists' | 'pipeline' | 'cpv-profile' | 'about' | 'admin') => void;
   unreadCount: number;
   pipelineCount: number;
   onOpenChat: () => void;
@@ -53,6 +54,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     'Användare';
 
   const avatarUrl = currentUser?.user_metadata?.avatar_url;
+
+  const isAdmin = !isSupabaseConfigured ||
+    (currentUser?.email?.toLowerCase() === 'mats.romblad@wsp.com') ||
+    currentUser?.role === 'admin' ||
+    currentUser?.user_metadata?.role === 'admin';
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md transition-colors">
@@ -89,9 +95,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Bell className="w-4 h-4" />
-              Bevakningar
+              Mina Bevakningar
               {unreadCount > 0 && (
-                <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-bold bg-amber-500 text-white rounded-full animate-pulse">
+                <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500 text-white rounded-full">
                   {unreadCount}
                 </span>
               )}
@@ -108,7 +114,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Kanban className="w-4 h-4" />
               Anbudspipeline
               {pipelineCount > 0 && (
-                <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-bold bg-ted-600 text-white rounded-full">
+                <span className="px-1.5 py-0.5 text-[10px] font-bold bg-ted-600 text-white rounded-full">
                   {pipelineCount}
                 </span>
               )}
@@ -123,7 +129,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <FileText className="w-4 h-4" />
-              CPV & Företagsprofil
+              CPV & Profil
             </button>
 
             <button
@@ -137,6 +143,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Info className="w-4 h-4" />
               Om
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => onSelectView('admin')}
+                className={`flex items-center gap-1.5 xl:gap-2 px-2.5 xl:px-3.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold transition-all ${
+                  currentView === 'admin'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                    : 'text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-rose-500" />
+                Admin
+              </button>
+            )}
           </nav>
 
           {/* Right Action buttons: AI Chat, Auth & Theme Toggle */}
@@ -187,6 +207,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <User className="w-3.5 h-3.5 text-slate-400" />
                       Min företagsprofil
                     </button>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          onSelectView('admin');
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 font-bold"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-rose-500" />
+                        Administratörspanel
+                      </button>
+                    )}
 
                     <button
                       onClick={() => {
@@ -260,6 +293,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <FileText className="w-4 h-4" />
             Profil
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => onSelectView('admin')}
+              className={`flex flex-col items-center gap-1 text-xs ${currentView === 'admin' ? 'text-rose-600 font-bold' : 'text-rose-400'}`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Admin
+            </button>
+          )}
           <button
             onClick={() => onSelectView('about')}
             className={`flex flex-col items-center gap-1 text-xs ${currentView === 'about' ? 'text-ted-600 font-bold' : 'text-slate-500'}`}
@@ -272,4 +314,3 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
-

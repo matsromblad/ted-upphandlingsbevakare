@@ -102,6 +102,17 @@ CREATE TABLE IF NOT EXISTS public.hidden_notices (
   PRIMARY KEY (user_id, notice_id)
 );
 
+-- 7. Team Members Directory Table (Colleagues & assignees for delegation)
+CREATE TABLE IF NOT EXISTS public.team_members (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT DEFAULT '',
+  role TEXT DEFAULT 'Kollega',
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
+);
+
 -- ==============================================================================
 -- Automatic User Profile Creation Trigger on Sign Up
 -- ==============================================================================
@@ -113,7 +124,11 @@ BEGIN
     new.id,
     new.email,
     COALESCE(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', split_part(new.email, '@', 1))
-  );
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
+    updated_at = timezone('utc'::text, now());
 
   -- Seed initial default watchlists for the new user
   INSERT INTO public.watchlists (id, user_id, name, query, filters_json, active, interval_minutes, email_frequency)
@@ -158,6 +173,13 @@ ALTER TABLE public.watchlist_hits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.saved_tenders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hidden_notices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
+
+-- Team Members Directory: All authenticated users can view and collaborate on team members
+CREATE POLICY "Allow authenticated read team_members" ON public.team_members FOR SELECT USING (true);
+CREATE POLICY "Allow authenticated insert team_members" ON public.team_members FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow authenticated update team_members" ON public.team_members FOR UPDATE USING (true);
+CREATE POLICY "Allow authenticated delete team_members" ON public.team_members FOR DELETE USING (true);
 
 -- Profiles: Users can view and update their own profile
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);

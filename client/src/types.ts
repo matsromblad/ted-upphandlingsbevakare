@@ -149,6 +149,9 @@ export interface CompanyProfile {
   preferred_cpv: string[];
   preferred_countries: string[];
   min_value: number;
+  role?: 'admin' | 'user';
+  email?: string;
+  fullName?: string;
   updated_at?: string;
 }
 
@@ -179,5 +182,91 @@ export interface TeamMember {
   id: string;
   name: string;
   email: string;
+  role?: string;
+  source?: 'registered' | 'team_member' | 'history';
   lastActiveAt?: string;
 }
+
+export interface AdminStats {
+  usersCount: number;
+  totalWatchlists: number;
+  activeWatchlists: number;
+  totalHits: number;
+  unreadHits: number;
+  savedTenders: number;
+  chatMessages: number;
+  hiddenNotices: number;
+  dbMode: string;
+}
+
+export interface ServiceHealth {
+  status: 'online' | 'degraded' | 'offline' | 'configured' | 'unconfigured' | 'not_configured' | 'error';
+  latencyMs?: number;
+  endpoint?: string;
+  model?: string;
+  mode?: string;
+  error?: string | null;
+  totalAvailable?: number;
+  activeCount?: number;
+  apiUrl?: string;
+  fromEmail?: string;
+  fromName?: string;
+  category?: string;
+  counts?: AdminStats;
+}
+
+export interface SystemHealthResponse {
+  success: boolean;
+  services: {
+    ted?: ServiceHealth;
+    magnit?: ServiceHealth;
+    verama?: ServiceHealth;
+    minimax?: ServiceHealth;
+    database?: ServiceHealth;
+    mailtrap?: ServiceHealth;
+  };
+  timestamp: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  fullName: string;
+  companyName: string;
+  role: 'admin' | 'user';
+  createdAt: string;
+  lastActiveAt?: string;
+  watchlistsCount: number;
+  hitsCount: number;
+  tendersCount: number;
+}
+
+export interface AdminWatchlist {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  companyName?: string;
+  name: string;
+  query?: string;
+  filters: NoticeFilters;
+  active: boolean;
+  intervalMinutes: number;
+  emailFrequency: WatchlistEmailFrequency;
+  lastEmailSentAt?: string;
+  lastRunAt?: string;
+  lastHitCount: number;
+  newCount: number;
+  createdAt: string;
+}
+
+export interface EmailStatusInfo {
+  configured: boolean;
+  apiUrl: string;
+  fromEmail: string;
+  fromName: string;
+  category: string;
+  totalUnreadHits: number;
+  activeWatchlistsCount: number;
+}
+

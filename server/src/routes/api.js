@@ -5,13 +5,13 @@ import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
 import { searchMagnitNotices, getMagnitNoticeById } from '../services/magnitService.js';
 import { searchVeramaNotices, getVeramaNoticeById } from '../services/veramaService.js';
-import { naturalLanguageToFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant } from '../services/minimaxService.js';
+import { naturalLanguageToFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant, callMiniMax } from '../services/minimaxService.js';
 import { parseUploadedProcurementFiles } from '../services/documentParserService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
 import { buildWatchlistManageUrl } from '../services/emailService.js';
 import { CPV_CATEGORIES, searchCpv } from '../services/cpvData.js';
-import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao, hiddenNoticeDao } from '../db.js';
-import { requireAuth, isSupabaseConfigured, isPlaceholder, supabaseAdmin } from '../supabase.js';
+import { watchlistDao, hitsDao, pipelineDao, profileDao, chatDao, hiddenNoticeDao, teamMemberDao, adminDao } from '../db.js';
+import { requireAuth, requireAdmin, isSupabaseConfigured, isPlaceholder, supabaseAdmin } from '../supabase.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -759,6 +759,42 @@ router.get('/users/active', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/team-members', requireAuth, async (req, res) => {
+  try {
+    const members = await teamMemberDao.getAll(req.db);
+    res.json({ success: true, members });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/team-members', requireAuth, async (req, res) => {
+  try {
+    const { name, email, role } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, error: 'Namn på kollegan krävs.' });
+    }
+    const member = await teamMemberDao.add({
+      name: name.trim(),
+      email: email ? email.trim() : '',
+      role: role ? role.trim() : 'Kollega',
+      userId: req.user.id
+    }, req.db);
+    res.json({ success: true, member });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/team-members/:id', requireAuth, async (req, res) => {
+  try {
+    await teamMemberDao.delete(req.params.id, req.db);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/profile', requireAuth, async (req, res) => {
   try {
     const profile = await profileDao.get(req.user.id, req.db);
@@ -858,6 +894,457 @@ router.get('/export/:type', requireAuth, async (req, res) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename=ted_${type}_export.xlsx`);
   res.send(buffer);
+});
+
+// ==========================================
+// 7. Admin Endpoints
+// ==========================================
+
+router.get('/admin/stats', requireAdmin, async (req, res) => {
+  try {
+    const stats = await adminDao.getStats();
+    res.json({ success: true, stats });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/admin/health', requireAdmin, async (req, res) => {
+  try {
+    const health = {};
+
+    // 1. TED API v3
+    const tedStart = Date.now();
+    try {
+      const tedRes = await searchTedNotices({ keywords: 'BIM' }, { page: 1, limit: 1 });
+      health.ted = {
+        status: tedRes.success ? 'online' : 'degraded',
+        latencyMs: Date.now() - tedStart,
+        totalAvailable: tedRes.totalCount || 0,
+        endpoint: process.env.TED_API_URL || 'https://api.ted.europa.eu/v3/notices/search',
+        error: tedRes.error || null
+      };
+    } catch (e) {
+      health.ted = {
+        status: 'offline',
+        latencyMs: Date.now() - tedStart,
+        endpoint: process.env.TED_API_URL || 'https://api.ted.europa.eu/v3/notices/search',
+        error: e.message
+      };
+    }
+
+    // 2. Magnit Source
+    const magnitStart = Date.now();
+    try {
+      const magnitRes = await searchMagnitNotices({ keywords: '' });
+      health.magnit = {
+        status: magnitRes.success ? 'online' : 'degraded',
+        latencyMs: Date.now() - magnitStart,
+        activeCount: (magnitRes.notices || []).length,
+        error: magnitRes.error || null
+      };
+    } catch (e) {
+      health.magnit = {
+        status: 'offline',
+        latencyMs: Date.now() - magnitStart,
+        error: e.message
+      };
+    }
+
+    // 3. Verama / Ework
+    const veramaStart = Date.now();
+    try {
+      const veramaRes = await searchVeramaNotices({ keywords: '' });
+      health.verama = {
+        status: veramaRes.success ? 'online' : 'degraded',
+        latencyMs: Date.now() - veramaStart,
+        activeCount: (veramaRes.notices || []).length,
+        error: veramaRes.error || null
+      };
+    } catch (e) {
+      health.verama = {
+        status: 'offline',
+        latencyMs: Date.now() - veramaStart,
+        error: e.message
+      };
+    }
+
+    // 4. MiniMax LLM
+    const aiStart = Date.now();
+    try {
+      const apiKey = process.env.MINIMAX_API_KEY || '';
+      const hasKey = Boolean(apiKey && !apiKey.includes('din_minimax'));
+      health.minimax = {
+        status: hasKey ? 'online' : 'not_configured',
+        model: process.env.MINIMAX_MODEL || 'MiniMax-M3',
+        endpoint: process.env.MINIMAX_BASE_URL || 'https://api.minimax.io/anthropic/v1',
+        latencyMs: Date.now() - aiStart
+      };
+    } catch (e) {
+      health.minimax = {
+        status: 'error',
+        error: e.message
+      };
+    }
+
+    // 5. Database
+    const dbStart = Date.now();
+    try {
+      const stats = await adminDao.getStats();
+      health.database = {
+        status: 'online',
+        mode: stats.dbMode,
+        latencyMs: Date.now() - dbStart,
+        counts: stats
+      };
+    } catch (e) {
+      health.database = {
+        status: 'offline',
+        latencyMs: Date.now() - dbStart,
+        error: e.message
+      };
+    }
+
+    // 6. Mailtrap Email
+    const mailtrapToken = process.env.MAILTRAP_API_TOKEN || '';
+    const mailtrapFrom = process.env.MAILTRAP_FROM_EMAIL || '';
+    const isMailConfigured = Boolean(mailtrapToken && !mailtrapToken.includes('<YOUR_') && mailtrapFrom);
+    health.mailtrap = {
+      status: isMailConfigured ? 'configured' : 'unconfigured',
+      apiUrl: process.env.MAILTRAP_API_URL || 'https://send.api.mailtrap.io/api/send',
+      fromEmail: mailtrapFrom || 'Ej angiven',
+      fromName: process.env.MAILTRAP_FROM_NAME || 'WSP TED Bevakare',
+      category: process.env.MAILTRAP_CATEGORY || 'Watchlist Digest'
+    };
+
+    res.json({
+      success: true,
+      services: health,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const users = await adminDao.getAllUsers();
+    res.json({ success: true, users });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const { email, password, fullName, companyName, role } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'E-postadress krävs' });
+    }
+
+    const userId = uuidv4();
+    if (isSupabaseConfigured && supabaseAdmin) {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: password || 'WspDefaultPass123!',
+        email_confirm: true,
+        user_metadata: { full_name: fullName || '', role: role || 'user' }
+      });
+
+      if (authError) {
+        return res.status(400).json({ success: false, error: authError.message });
+      }
+
+      const createdUserId = authData?.user?.id || userId;
+      await supabaseAdmin.from('profiles').upsert({
+        id: createdUserId,
+        email,
+        full_name: fullName || '',
+        company_name: companyName || 'WSP Sverige AB',
+        role: role || 'user',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      try {
+        await watchlistDao.seedDefaults(createdUserId);
+      } catch (e) {}
+
+      return res.json({ success: true, userId: createdUserId });
+    }
+
+    await adminDao.updateUserProfileAdmin(userId, {
+      fullName: fullName || 'Ny Användare',
+      companyName: companyName || 'WSP Sverige AB',
+      email,
+      role: role || 'user'
+    });
+
+    res.json({ success: true, userId });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/admin/users/:id/role', requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!role || !['admin', 'user'].includes(role)) {
+      return res.status(400).json({ success: false, error: 'Rollen måste vara "admin" eller "user"' });
+    }
+    const result = await adminDao.updateUserRole(req.params.id, role);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/admin/users/:id/profile', requireAdmin, async (req, res) => {
+  try {
+    const result = await adminDao.updateUserProfileAdmin(req.params.id, req.body);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await adminDao.deleteUser(req.params.id);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/admin/watchlists', requireAdmin, async (req, res) => {
+  try {
+    const watchlists = await adminDao.getAllWatchlists();
+    res.json({ success: true, watchlists });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/watchlists/:id/run', requireAdmin, async (req, res) => {
+  try {
+    const allWls = await adminDao.getAllWatchlists();
+    const wl = allWls.find(w => w.id === req.params.id);
+    if (!wl) {
+      return res.status(404).json({ success: false, error: 'Bevakningen hittades inte' });
+    }
+
+    const runObj = {
+      id: wl.id,
+      name: wl.name,
+      query: wl.query,
+      user_id: wl.userId,
+      filters_json: JSON.stringify(wl.filters || {})
+    };
+
+    const result = await runWatchlist(runObj);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/admin/watchlists/:id/toggle', requireAdmin, async (req, res) => {
+  try {
+    const { active } = req.body;
+    const result = await adminDao.toggleWatchlist(req.params.id, active);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/admin/watchlists/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await adminDao.deleteWatchlist(req.params.id);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/cron/run', requireAdmin, async (req, res) => {
+  try {
+    const results = await runAllActiveWatchlists();
+    res.json({ success: true, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/admin/email/status', requireAdmin, async (req, res) => {
+  try {
+    const mailtrapToken = process.env.MAILTRAP_API_TOKEN || '';
+    const mailtrapFrom = process.env.MAILTRAP_FROM_EMAIL || '';
+    const isConfigured = Boolean(mailtrapToken && !mailtrapToken.includes('<YOUR_') && mailtrapFrom);
+
+    const stats = await adminDao.getStats();
+
+    res.json({
+      success: true,
+      configured: isConfigured,
+      apiUrl: process.env.MAILTRAP_API_URL || 'https://send.api.mailtrap.io/api/send',
+      fromEmail: mailtrapFrom || '',
+      fromName: process.env.MAILTRAP_FROM_NAME || 'WSP TED Bevakare',
+      category: process.env.MAILTRAP_CATEGORY || 'Watchlist Digest',
+      totalUnreadHits: stats.unreadHits || 0,
+      activeWatchlistsCount: stats.activeWatchlists || 0
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/email/test', requireAdmin, async (req, res) => {
+  try {
+    const { targetEmail } = req.body;
+    if (!targetEmail) {
+      return res.status(400).json({ success: false, error: 'Mottagaradress krävs för testutskick' });
+    }
+
+    const MAILTRAP_API_URL = process.env.MAILTRAP_API_URL || 'https://send.api.mailtrap.io/api/send';
+    const MAILTRAP_API_TOKEN = process.env.MAILTRAP_API_TOKEN || '';
+    const MAILTRAP_FROM_EMAIL = process.env.MAILTRAP_FROM_EMAIL || '';
+    const MAILTRAP_FROM_NAME = process.env.MAILTRAP_FROM_NAME || 'WSP TED Bevakare';
+
+    if (!MAILTRAP_API_TOKEN || !MAILTRAP_FROM_EMAIL) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mailtrap är inte fullständigt konfigurerat. Kontrollera MAILTRAP_API_TOKEN och MAILTRAP_FROM_EMAIL i .env.'
+      });
+    }
+
+    const testHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px;">
+        <div style="color: #F1503C; font-weight: bold; font-size: 14px; text-transform: uppercase;">WSP TED Bevakare • Testutskick</div>
+        <h2 style="color: #0f172a; margin-top: 12px;">Verifiering av e-postintegration</h2>
+        <p style="color: #475569; line-height: 1.6;">
+          Detta är ett administrativt testmeddelande från <strong>WSP TED Bevakare</strong> för att verifiera att anslutningen till Mailtrap och leverans av automatiska bevakningssammanfattningar fungerar som avsett.
+        </p>
+        <div style="background: #f8fafc; border-left: 4px solid #F1503C; padding: 12px 16px; margin: 20px 0; border-radius: 4px;">
+          <div style="font-size: 13px; color: #64748b;"><strong>Tidstämpel:</strong> ${new Date().toLocaleString('sv-SE')}</div>
+          <div style="font-size: 13px; color: #64748b;"><strong>Mottagare:</strong> ${escapeHtml(targetEmail)}</div>
+          <div style="font-size: 13px; color: #64748b;"><strong>Status:</strong> Konfiguration OK</div>
+        </div>
+        <p style="font-size: 12px; color: #94a3b8; margin-top: 24px;">Skickat via WSP TED Bevakare Admin-panel.</p>
+      </div>
+    `;
+
+    const response = await fetch(MAILTRAP_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${MAILTRAP_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: { email: MAILTRAP_FROM_EMAIL, name: MAILTRAP_FROM_NAME },
+        to: [{ email: targetEmail }],
+        subject: 'WSP TED Bevakare: Test av e-postintegration',
+        text: `Detta är ett administrativt testmeddelande från WSP TED Bevakare skickat till ${targetEmail} vid ${new Date().toLocaleString('sv-SE')}.`,
+        html: testHtml,
+        category: 'Admin Test'
+      })
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `Mailtrap API fel (${response.status})`);
+    }
+
+    res.json({
+      success: true,
+      message: `Testmail skickat till ${targetEmail}`,
+      messageId: data?.message_ids?.[0] || data?.message_id || 'OK'
+    });
+  } catch (err) {
+    console.error('[Admin Email Test Error]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/test/ted', requireAdmin, async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { query, filters = {}, page = 1, limit = 10 } = req.body;
+    const searchFilter = query ? { ...filters, rawQuery: query } : filters;
+
+    const result = await searchTedNotices(searchFilter, { page: parseInt(page) || 1, limit: parseInt(limit) || 10 });
+    const latencyMs = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      latencyMs,
+      ...result
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, latencyMs: Date.now() - startTime, error: err.message });
+  }
+});
+
+router.post('/admin/test/minimax', requireAdmin, async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const { prompt = 'Svara kort på svenska i två meningar: Vad är WSP och hur hjälper TED upphandlingsbevakare konsultorganisationer?' } = req.body;
+    const reply = await callMiniMax([
+      { role: 'user', content: prompt }
+    ], 'Du är en hjälpsam AI-expert inom upphandling och WSP.');
+    const latencyMs = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      reply,
+      latencyMs,
+      model: process.env.MINIMAX_MODEL || 'MiniMax-M3'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, latencyMs: Date.now() - startTime, error: err.message });
+  }
+});
+
+router.post('/admin/maintenance/cleanup-hits', requireAdmin, async (req, res) => {
+  try {
+    const { days = 30 } = req.body;
+    const result = await adminDao.cleanupHits(parseInt(days) || 30);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/maintenance/cleanup-chats', requireAdmin, async (req, res) => {
+  try {
+    const { days = 30 } = req.body;
+    const result = await adminDao.cleanupChats(parseInt(days) || 30);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/admin/maintenance/release-lock', requireAdmin, async (req, res) => {
+  try {
+    const result = await adminDao.releaseCronLock();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/admin/export/all', requireAdmin, async (req, res) => {
+  try {
+    const dump = await adminDao.exportAll();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename=ted_monitor_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    res.json(dump);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;
