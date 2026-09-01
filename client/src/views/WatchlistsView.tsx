@@ -8,13 +8,16 @@ import {
   Loader2,
   Eye,
   CheckCheck,
-  AlertCircle
+  AlertCircle,
+  Grid,
+  List
 } from 'lucide-react';
 import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
 import { showToast } from '../components/Toast';
 import { NoticeCard } from '../components/NoticeCard';
+import { NoticeTable } from '../components/NoticeTable';
 
 interface WatchlistsViewProps {
   onOpenNoticeDetail: (notice: Notice) => void;
@@ -42,6 +45,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   const [runningSingleId, setRunningSingleId] = useState<string | null>(null);
   const [updatingFrequencyId, setUpdatingFrequencyId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -289,15 +293,38 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
               </select>
             </div>
 
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="text-xs font-semibold text-ted-600 hover:text-ted-700 dark:text-ted-400 flex items-center gap-1"
-              >
-                <CheckCheck className="w-3.5 h-3.5" />
-                Markera alla som lästa
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={handleMarkAllRead}
+                  className="text-xs font-semibold text-ted-600 hover:text-ted-700 dark:text-ted-400 flex items-center gap-1"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  Markera alla som lästa
+                </button>
+              )}
+
+              <div className="flex items-center bg-slate-200 dark:bg-slate-800 p-1 rounded-xl">
+                <button
+                  onClick={() => setViewMode('card')}
+                  className={`p-1.5 rounded-lg text-xs transition-all ${
+                    viewMode === 'card' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
+                  }`}
+                  title="Kortvy"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 rounded-lg text-xs transition-all ${
+                    viewMode === 'table' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'
+                  }`}
+                  title="Listvy"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Hits Feed List */}
@@ -318,7 +345,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                 <Play className="w-3.5 h-3.5" /> Kör bevakningar nu
               </button>
             </div>
-          ) : (
+          ) : viewMode === 'card' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
               {filteredHits.map((hit) => {
                 const notice = hit.notice;
@@ -352,6 +379,37 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                 );
               })}
             </div>
+          ) : (
+            <NoticeTable
+              notices={filteredHits.filter(h => h.notice).map(h => h.notice as Notice)}
+              isTenderSaved={isTenderSaved}
+              onSave={handleSaveToPipeline}
+              isRowUnread={(notice) => {
+                const hit = filteredHits.find(h => h.notice?.id === notice.id);
+                return Boolean(hit && !hit.is_read);
+              }}
+              renderRowBadge={(notice) => {
+                const hit = filteredHits.find(h => h.notice?.id === notice.id);
+                if (!hit) return null;
+                return (
+                  <>
+                    {!hit.is_read && (
+                      <span className="px-2 py-0.5 rounded-md font-extrabold bg-amber-500 text-white uppercase text-[10px] tracking-wider">
+                        NY
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+                      {hit.watchlist_name}
+                    </span>
+                  </>
+                );
+              }}
+              onOpenDetail={(notice) => {
+                const hit = filteredHits.find(h => h.notice?.id === notice.id);
+                if (hit && !hit.is_read) handleMarkHitRead(hit.id);
+                onOpenNoticeDetail(notice);
+              }}
+            />
           )}
         </div>
       )}
