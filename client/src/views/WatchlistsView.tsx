@@ -11,11 +11,13 @@ import {
   CheckCheck,
   AlertCircle,
   Grid,
-  List
+  List,
+  Edit3
 } from 'lucide-react';
 import { Watchlist, WatchlistHit, Notice, SavedTender } from '../types';
 import { api } from '../api';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
+import { EditWatchlistModal } from '../components/EditWatchlistModal';
 import { showToast } from '../components/Toast';
 import { NoticeCard } from '../components/NoticeCard';
 import { NoticeTable } from '../components/NoticeTable';
@@ -50,6 +52,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
   const [runningSingleId, setRunningSingleId] = useState<string | null>(null);
   const [updatingFrequencyId, setUpdatingFrequencyId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingWatchlist, setEditingWatchlist] = useState<Watchlist | null>(null);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
   const [showHidden, setShowHidden] = useState<boolean>(true);
 
@@ -483,17 +486,43 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                     )}
                   </div>
 
-                  <h3 className="font-bold text-base text-slate-900 dark:text-white leading-snug">
-                    {wl.name}
-                  </h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3
+                      onClick={() => setEditingWatchlist(wl)}
+                      className="font-bold text-base text-slate-900 dark:text-white leading-snug hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                      title="Klicka för att redigera"
+                    >
+                      {wl.name}
+                    </h3>
+                    <button
+                      onClick={() => setEditingWatchlist(wl)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors flex-shrink-0"
+                      title="Redigera profil"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
                   {/* Filter criteria summary */}
-                  <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-850 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <div
+                    onClick={() => setEditingWatchlist(wl)}
+                    className="space-y-1 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-850 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
+                    title="Klicka för att redigera filter"
+                  >
                     <p>• Sökord: <span className="font-medium text-slate-900 dark:text-white">{filters.keywords || 'Alla'}</span></p>
-                    <p>• Länder: <span className="font-medium text-slate-900 dark:text-white">{filters.countries?.join(', ') || 'SWE'}</span></p>
+                    {filters.excludeKeywords && (
+                      <p>• Exkluderar: <span className="font-medium text-red-600 dark:text-red-400">{filters.excludeKeywords}</span></p>
+                    )}
+                    {filters.buyer && (
+                      <p>• Köpare: <span className="font-medium text-blue-600 dark:text-blue-400">{filters.buyer}</span></p>
+                    )}
+                    <p>• Länder: <span className="font-medium text-slate-900 dark:text-white">{filters.allCountries ? 'Alla EU/EES' : (filters.countries?.join(', ') || 'SWE')}</span></p>
+                    {filters.cpv && filters.cpv.length > 0 && (
+                      <p>• CPV: <span className="font-medium text-purple-600 dark:text-purple-400">{filters.cpv.length} koder valda</span></p>
+                    )}
                     <p>• E-post: <span className="font-medium text-slate-900 dark:text-white">{emailFrequencyLabels[wl.email_frequency] || 'Dagligen'}</span></p>
                     {wl.last_run_at && (
-                      <p className="text-[11px] text-slate-400 pt-1">Senast sokt: {new Date(wl.last_run_at).toLocaleString('sv-SE')}</p>
+                      <p className="text-[11px] text-slate-400 pt-1">Senast sökt: {new Date(wl.last_run_at).toLocaleString('sv-SE')}</p>
                     )}
                     {wl.last_email_sent_at && (
                       <p className="text-[11px] text-slate-400">Senaste mail: {new Date(wl.last_email_sent_at).toLocaleString('sv-SE')}</p>
@@ -524,12 +553,21 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
 
                   <div className="flex items-center gap-1.5">
                     <button
+                      onClick={() => setEditingWatchlist(wl)}
+                      className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-700 dark:text-amber-300 transition-colors font-semibold flex items-center gap-1"
+                      title="Redigera bevakningsprofil"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline text-[11px]">Redigera</span>
+                    </button>
+
+                    <button
                       onClick={() => {
                         setSelectedWatchlistId(wl.id);
                         setActiveTab('feed');
                       }}
                       className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
-                      title="Visa traffar for denna bevakning"
+                      title="Visa träffar för denna bevakning"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
@@ -537,7 +575,7 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
                     <button
                       onClick={(e) => handleRunSingle(wl.id, e)}
                       disabled={isRunning}
-                      className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-800 dark:text-amber-300 transition-colors"
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
                       title="Kör denna bevakning nu"
                     >
                       {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
@@ -558,12 +596,24 @@ export const WatchlistsView: React.FC<WatchlistsViewProps> = ({
         </div>
       )}
 
-      {/* Modal */}
+      {/* Create Modal */}
       <CreateWatchlistModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         filters={{ countries: ['SWE'], formType: 'competition', datePreset: '30d' }}
         onWatchlistCreated={() => {
+          loadData();
+          onWatchlistChanged();
+        }}
+      />
+
+      {/* Edit Modal */}
+      <EditWatchlistModal
+        isOpen={Boolean(editingWatchlist)}
+        onClose={() => setEditingWatchlist(null)}
+        watchlist={editingWatchlist}
+        onWatchlistUpdated={(updatedWl) => {
+          setWatchlists(prev => prev.map(w => w.id === updatedWl.id ? updatedWl : w));
           loadData();
           onWatchlistChanged();
         }}
