@@ -71,9 +71,14 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
       replacementReason: 'Enkelt modernt gränssnitt, direkt export till Excel/JSON och integrerad Kanban-pipeline.'
     },
     {
-      name: 'Magnit Source / Mäklarportaler',
+      name: 'Magnit Source / VMS-mäklare',
       description: 'Slutet VMS- och konsultmäklarsystem för direktavrop och resursförfrågningar.',
-      replacementReason: 'Integrerad realtidssökning som fångar uppdrag från Trafikförvaltningen, Vattenfall, Stockholm Exergi, Swedavia m.fl.'
+      replacementReason: 'Integrerad realtidssökning och bevakning som fångar uppdrag från Trafikförvaltningen (SL), Vattenfall, Swedavia, Stockholm Exergi m.fl.'
+    },
+    {
+      name: 'Verama / Ework Group',
+      description: 'Mäklarportal för konsultuppdrag och specialistroller.',
+      replacementReason: 'Direkt realtidsbevakning som scannar Verama/Eworks öppna konsultuppdrag och matchar specialistkompetens utan separat inloggning.'
     },
     {
       name: 'Upphandling24 (U24)',
@@ -85,8 +90,8 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
   const keyAdvantages = [
     {
       icon: <Database className="w-5 h-5 text-ted-600 dark:text-ted-400" />,
-      title: 'Direktkälla från TED API v3',
-      description: 'Hämtar data omedelbart från EU:s officiella kungörelseorgan (Publications Office of the EU) utan fördröjande mellanhänder.'
+      title: 'Trippla källor: TED, Magnit & Verama',
+      description: 'Hämtar data omedelbart från EU TED API v3, Magnit Source VMS och Verama / Ework för maximal täckning av både upphandlingar och konsultuppdrag.'
     },
     {
       icon: <Sparkles className="w-5 h-5 text-purple-600 dark:text-purple-400" />,
@@ -101,7 +106,7 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
     {
       icon: <Bell className="w-5 h-5 text-amber-600 dark:text-amber-400" />,
       title: 'Automatisk Bakgrundspollning',
-      description: 'Skapa skräddarsydda bevakningslistor som regelbundet scannar TED efter nya affärsmöjligheter och visar olästa notiser.'
+      description: 'Skapa skräddarsydda bevakningslistor som regelbundet scannar TED, Magnit och Verama efter nya affärsmöjligheter och skickar e-postnotiser.'
     },
     {
       icon: <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />,
@@ -117,12 +122,16 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
 
   const faqs = [
     {
-      question: 'Vilka upphandlingar syns i appen?',
-      answer: 'Appen hämtar samtliga offentliga upphandlingar som publiceras i TED (Tenders Electronic Daily). Detta omfattar alla upphandlingar över EU:s tröskelvärden i enlighet med LOU (Lagen om offentlig upphandling), LUF (Försörjningssektorn), LUFS (Försvar och säkerhet) samt LUK (Koncessioner), i Sverige, Norden och övriga EU/EES.'
+      question: 'Vilka upphandlingar och källor syns i appen?',
+      answer: 'Appen samlar och övervakar tre ledande källor i realtid:\n\n1. TED (Tenders Electronic Daily): Samtliga offentliga upphandlingar över EU:s tröskelvärden i enlighet med LOU, LUF, LUFS och LUK i Sverige, Norden och övriga EU/EES.\n2. Magnit Source: Resursförfrågningar och konsultavrop från stora uppdragsgivare som Trafikförvaltningen (SL), Vattenfall, Swedavia, Stockholm Exergi m.fl.\n3. Verama / Ework Group: Öppna konsultuppdrag, specialistroller och förfrågningar inom teknik, IT, infrastruktur och management.'
+    },
+    {
+      question: 'Hur fungerar integrationen med Magnit Source och Verama / Ework?',
+      answer: 'Appen söker och pollar Magnit Source och Verama/Ework parallellt med TED Search API v3. Alla träffar förses med tydliga källbrickor (TED, Magnit, Verama), direktlänkar till källsystemet och fullt stöd för MiniMax AI-sammanfattning och anbudspipeline.'
     },
     {
       question: 'Hur ofta uppdateras datan?',
-      answer: 'Live-sökningar görs i realtid direkt mot TED API v3. Dina sparade bevakningsprofiler pollas automatiskt i bakgrunden enligt det tidsintervall du har angett (t.ex. varje timme eller dagligen), och nya träffar flaggas med badges i menyn.'
+      answer: 'Live-sökningar görs i realtid direkt mot TED API v3 samt konsultportalerna. Dina sparade bevakningsprofiler pollas automatiskt i bakgrunden enligt schemat (var 10:e minut i bakgrunden), och samlade notiser skickas dagligen eller veckovis via e-post samt flaggas med badges i gränssnittet.'
     },
     {
       question: 'Hur fungerar AI-analysen och MiniMax Copilot?',
@@ -134,7 +143,7 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
     },
     {
       question: 'Finns upphandlingar från Trafikverket och andra statliga myndigheter i appen?',
-      answer: 'Ja! Trafikverket (registrerat som "Trafikverket Myndighet" i TED), Svenska kraftnät, Region Stockholm, Trafikförvaltningen (SL), Västfastigheter m.fl. kungör alla sina upphandlingar över tröskelvärdena i TED. Du kan enkelt söka fram dem genom att skriva myndighetens namn i fältet "Upphandlande organisation", klicka på snabbvalsknapparna under sökfiltren eller använda MiniMax Smart Sök. Observera att mindre direktupphandlingar under tröskelvärdet samt enskilda avrop inom etablerade DIS (Dynamiska Inköpssystem) hanteras direkt i beställarens leverantörsportal (t.ex. Kommers Annons/CTM), medan inrättandet av DIS-systemen finns i TED.'
+      answer: 'Ja! Trafikverket (registrerat som "Trafikverket Myndighet" i TED), Svenska kraftnät, Region Stockholm, Trafikförvaltningen (SL), Västfastigheter m.fl. kungör alla sina upphandlingar över tröskelvärdena i TED. Därtill fångas konsultuppdrag från Trafikförvaltningen, Vattenfall, Swedavia m.fl. automatiskt in via den integrerade Magnit Source- och Verama-kopplingen.'
     },
     {
       question: 'Hur kontaktar jag skaparen eller rapporterar önskemål?',
@@ -289,6 +298,36 @@ export const AboutView: React.FC<AboutViewProps> = ({ onNavigate }) => {
               </div>
               <p>
                 Applikationen anropar direkt TED:s moderna <strong>Search API v3</strong> med stöd för eForms-standarden. Detta ger omedelbar tillgång till nya annonser utan fördröjning.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-orange-500" />
+                  Magnit Source Portal (VMS)
+                </span>
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300">
+                  Konsultmäklarflöde
+                </span>
+              </div>
+              <p>
+                Direkt integration som kontinuerligt fångar resursförfrågningar och avrop från beställare som <strong>Trafikförvaltningen (SL)</strong>, <strong>Vattenfall</strong>, <strong>Swedavia</strong> och <strong>Stockholm Exergi</strong>.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-teal-500" />
+                  Verama / Ework Group
+                </span>
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                  Öppen konsultportal
+                </span>
+              </div>
+              <p>
+                Övervakar öppna konsultuppdrag, specialistroller och RFI-förfrågningar från <strong>Ework-nätverket</strong> inom IT, teknik, infrastruktur och förvaltning.
               </p>
             </div>
 
