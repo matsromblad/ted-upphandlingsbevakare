@@ -23,9 +23,16 @@ import {
   X,
   RotateCcw,
   Eye,
-  EyeOff
+  EyeOff,
+  FileText,
+  Upload,
+  Paperclip,
+  UserCheck,
+  Briefcase,
+  Trash2,
+  Plus
 } from 'lucide-react';
-import { Notice, NoticeFilters, FormType, DatePreset, SavedTender } from '../types';
+import { Notice, NoticeFilters, FormType, DatePreset, SavedTender, CvSearchSummary } from '../types';
 import { api } from '../api';
 import { CpvSelectorModal } from '../components/CpvSelectorModal';
 import { CreateWatchlistModal } from '../components/CreateWatchlistModal';
@@ -65,10 +72,17 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [rawQuery, setRawQuery] = useState(initialFilters?.rawQuery || '');
   const [showExpertMode, setShowExpertMode] = useState(false);
 
-  // AI Smart Search state
+  // AI Smart Search & CV Search state
+  const [aiSearchMode, setAiSearchMode] = useState<'text' | 'cv'>('text');
   const [smartPrompt, setSmartPrompt] = useState('');
   const [smartSearching, setSmartSearching] = useState(false);
   const [smartExplanation, setSmartExplanation] = useState('');
+  const [cvFiles, setCvFiles] = useState<File[]>([]);
+  const [cvPrompt, setCvPrompt] = useState('');
+  const [cvSearching, setCvSearching] = useState(false);
+  const [cvSummary, setCvSummary] = useState<CvSearchSummary | null>(null);
+  const [isDraggingCv, setIsDraggingCv] = useState(false);
+  const cvFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Results & Pagination state
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -217,6 +231,87 @@ export const SearchView: React.FC<SearchViewProps> = ({
     }
   };
 
+  const handleCvFileSelect = (newFiles: FileList | File[] | null) => {
+    if (!newFiles || newFiles.length === 0) return;
+    const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt', '.rtf'];
+    const validFiles: File[] = [];
+
+    const fileListArray = Array.from(newFiles);
+    for (const file of fileListArray) {
+      const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+      if (allowedExtensions.includes(ext)) {
+        if (!cvFiles.some(f => f.name === file.name && f.size === file.size)) {
+          validFiles.push(file);
+        }
+      } else {
+        showToast('error', `Filen "${file.name}" stöds inte. Använd PDF, Word eller TXT.`);
+      }
+    }
+
+    if (validFiles.length > 0) {
+      setCvFiles(prev => [...prev, ...validFiles]);
+      showToast('info', `${validFiles.length} CV-fil(er) tillagda för analys.`);
+    }
+  };
+
+  const handleRemoveCvFile = (index: number) => {
+    setCvFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCvSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (cvFiles.length === 0 || cvSearching) return;
+
+    setCvSearching(true);
+    setError(null);
+    setSmartExplanation('');
+
+    try {
+      const res = await api.cvSearch(cvFiles, cvPrompt.trim(), countries);
+      if (res.success && res.filters) {
+        const f = res.filters;
+        if (f.buyer !== undefined) setBuyer(f.buyer || '');
+        if (f.keywords !== undefined) setKeywords(f.keywords || '');
+        if (f.excludeKeywords !== undefined) setExcludeKeywords(f.excludeKeywords || '');
+        if (f.cpv && f.cpv.length > 0) setSelectedCpvs(f.cpv);
+        else if (f.cpv && f.cpv.length === 0) setSelectedCpvs([]);
+
+        if (f.countries && f.countries.length > 0) {
+          setCountries(f.countries);
+          setAllCountries(false);
+        }
+        if (f.formType) setFormType(f.formType);
+        if (f.datePreset) setDatePreset(f.datePreset);
+        if (f.explanation) setSmartExplanation(f.explanation);
+
+        if (res.cvSummary) {
+          setCvSummary(res.cvSummary);
+        }
+
+        // Execute search with extracted filters
+        const searchFilters: NoticeFilters = {
+          buyer: f.buyer || undefined,
+          keywords: f.keywords || undefined,
+          excludeKeywords: f.excludeKeywords || undefined,
+          cpv: f.cpv && f.cpv.length > 0 ? f.cpv : undefined,
+          countries: f.countries,
+          formType: f.formType,
+          datePreset: f.datePreset,
+          onlyActive
+        };
+
+        await executeSearch(1, searchFilters);
+        showToast('success', `CV-matchning klar! ${cvFiles.length} CV:n analyserades.`);
+      } else {
+        setError(res.error || 'CV-sökningen misslyckades.');
+      }
+    } catch (err: any) {
+      setError(`CV-sökningsfel: ${err.message}`);
+    } finally {
+      setCvSearching(false);
+    }
+  };
+
   const handleSelectBuyerChip = (bVal: string) => {
     const newBuyer = buyer === bVal ? '' : bVal;
     setBuyer(newBuyer);
@@ -239,6 +334,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
     setOnlyActive(true);
     setRawQuery('');
     setSmartExplanation('');
+    setCvFiles([]);
+    setCvPrompt('');
+    setCvSummary(null);
     executeSearch(1, {
       countries: ['SWE'],
       formType: 'competition',
@@ -325,50 +423,283 @@ export const SearchView: React.FC<SearchViewProps> = ({
         </div>
       </div>
 
-      {/* MiniMax Natural Language Smart Search Row */}
-      <div className="rounded-3xl bg-gradient-to-r from-red-50/60 via-purple-50/50 to-white dark:from-slate-900 dark:via-slate-900 dark:to-purple-950/60 p-5 sm:p-6 shadow-sm border border-red-100 dark:border-purple-900/40 relative overflow-hidden space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800/60 text-purple-800 dark:text-purple-200 text-xs font-bold backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-300" />
-            <span>MiniMax-M3 Smart Sök</span>
+      {/* MiniMax Natural Language & CV Smart Search Box */}
+      <div className="rounded-3xl bg-gradient-to-r from-red-50/60 via-purple-50/50 to-white dark:from-slate-900 dark:via-slate-900 dark:to-purple-950/60 p-5 sm:p-6 shadow-sm border border-red-100 dark:border-purple-900/40 relative overflow-hidden space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800/60 text-purple-800 dark:text-purple-200 text-xs font-bold backdrop-blur-md">
+              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-300" />
+              <span>MiniMax-M3 AI Matchning</span>
+            </div>
+
+            {/* Mode Switcher */}
+            <div className="inline-flex rounded-xl bg-slate-200/80 dark:bg-slate-800 p-0.5 border border-slate-300/60 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setAiSearchMode('text')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  aiSearchMode === 'text'
+                    ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Fritext (NLP)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiSearchMode('cv')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  aiSearchMode === 'cv'
+                    ? 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Ladda upp CV:n
+                {cvFiles.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-purple-600 text-white text-[10px] font-bold">
+                    {cvFiles.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
+
           <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-            Beskriv vad du letar efter med egna ord – MiniMax matchar automatiskt CPV-koder och TED-sökfilter
+            {aiSearchMode === 'text'
+              ? 'Beskriv vad du söker med egna ord – MiniMax matchar automatiskt CPV-koder och TED-sökfilter'
+              : 'Ladda upp 1 eller flera CV:n (PDF, Word, TXT) för att hitta skräddarsydda upphandlingar & konsultuppdrag'}
           </span>
         </div>
 
-        <form onSubmit={handleSmartSearch} className="flex flex-col sm:flex-row gap-2.5">
-          <div className="relative flex-1">
-            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 absolute left-4 top-3.5" />
-            <input
-              type="text"
-              value={smartPrompt}
-              onChange={(e) => setSmartPrompt(e.target.value)}
-              placeholder="t.ex. Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige..."
-              className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-xs"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!smartPrompt.trim() || smartSearching}
-            className="px-7 py-3 rounded-2xl bg-[#F1503C] hover:bg-[#dc2626] text-white font-bold text-sm shadow-md shadow-[#F1503C]/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
-          >
-            {smartSearching ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                MiniMax tolkar...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Smart Sök
-              </>
-            )}
-          </button>
-        </form>
+        {aiSearchMode === 'text' ? (
+          <form onSubmit={handleSmartSearch} className="flex flex-col sm:flex-row gap-2.5">
+            <div className="relative flex-1">
+              <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 absolute left-4 top-3.5" />
+              <input
+                type="text"
+                value={smartPrompt}
+                onChange={(e) => setSmartPrompt(e.target.value)}
+                placeholder="t.ex. Hitta upphandlingar för BIM-samordning och digital informationshantering i Sverige..."
+                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-xs"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!smartPrompt.trim() || smartSearching}
+              className="px-7 py-3 rounded-2xl bg-[#F1503C] hover:bg-[#dc2626] text-white font-bold text-sm shadow-md shadow-[#F1503C]/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
+            >
+              {smartSearching ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  MiniMax tolkar...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Smart Sök
+                </>
+              )}
+            </button>
+          </form>
+        ) : (
+          /* CV Upload & Matching Mode */
+          <div className="space-y-3.5">
+            {/* Dropzone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingCv(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setIsDraggingCv(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingCv(false);
+                handleCvFileSelect(e.dataTransfer.files);
+              }}
+              onClick={() => cvFileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
+                isDraggingCv
+                  ? 'border-purple-500 bg-purple-100/60 dark:bg-purple-950/60 scale-[1.01]'
+                  : 'border-purple-300 dark:border-purple-800/80 bg-white/70 dark:bg-slate-850/60 hover:bg-purple-50/50 dark:hover:bg-purple-950/30'
+              }`}
+            >
+              <input
+                ref={cvFileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.docx,.doc,.txt,.rtf"
+                className="hidden"
+                onChange={(e) => handleCvFileSelect(e.target.files)}
+              />
+              <div className="flex flex-col items-center justify-center gap-2 text-xs">
+                <div className="w-11 h-11 rounded-2xl bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 flex items-center justify-center shadow-xs">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                    Klicka för att välja eller dra och släpp CV-filer här
+                  </span>
+                  <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">
+                    Stödjer flera filer samtidigt (.pdf, .docx, .doc, .txt, .rtf)
+                  </p>
+                </div>
+              </div>
+            </div>
 
-        {/* AI Explanation Pill */}
-        {smartExplanation && (
+            {/* Selected CV files pill list */}
+            {cvFiles.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    Valda CV-dokument ({cvFiles.length} st):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCvFiles([])}
+                    className="text-red-500 hover:text-red-600 font-medium text-[11px] flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Rensa alla
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {cvFiles.map((file, idx) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 shadow-xs"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
+                      <span className="font-semibold truncate max-w-[200px]">{file.name}</span>
+                      <span className="text-[10px] text-slate-400">({(file.size / 1024).toFixed(0)} KB)</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveCvFile(idx);
+                        }}
+                        className="p-0.5 text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Optional CV Prompt & Search Action */}
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="relative flex-1">
+                <Paperclip className="w-4 h-4 text-purple-500 absolute left-4 top-3.5" />
+                <input
+                  type="text"
+                  value={cvPrompt}
+                  onChange={(e) => setCvPrompt(e.target.value)}
+                  placeholder="Valfri kompletterande instruktion (t.ex. 'Prioritera Trafikverket eller SL', 'Sök endast ramavtal')..."
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-xs"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCvSearch()}
+                disabled={cvFiles.length === 0 || cvSearching}
+                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-[#F1503C] hover:from-purple-700 hover:to-[#dc2626] text-white font-bold text-sm shadow-md shadow-purple-600/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2 flex-shrink-0"
+              >
+                {cvSearching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Analyserar CV:n...</span>
+                  </>
+                ) : (
+                  <>
+                    <Briefcase className="w-4 h-4" />
+                    <span>Matcha mot upphandlingar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* CV Profile Match Result Card */}
+        {cvSummary && (
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 shadow-md space-y-3 animate-fadeIn">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                    Identifierad CV-profil & Sökkriterier
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Baserat på: {cvSummary.fileNames.join(', ')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsWatchlistModalOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  Skapa bevakning för dessa CV:n
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCvSummary(null)}
+                  className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                  title="Stäng matchningsöversikt"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              {cvSummary.profilesIdentified && cvSummary.profilesIdentified.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Identifierade roller:</span>
+                  {cvSummary.profilesIdentified.map((role, idx) => (
+                    <span key={idx} className="px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 font-semibold text-[11px]">
+                      {role}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {cvSummary.skills && cvSummary.skills.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">Kärnkompetenser:</span>
+                  {cvSummary.skills.map((skill, idx) => (
+                    <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px]">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {cvSummary.explanation && (
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed pt-1 text-[11px] sm:text-xs">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">AI-motivering: </span>
+                  {cvSummary.explanation}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Standard AI Explanation Pill (if not cvSummary) */}
+        {!cvSummary && smartExplanation && (
           <div className="p-3.5 rounded-xl bg-purple-100/70 dark:bg-purple-900/50 border border-purple-200 dark:border-purple-700/50 text-xs text-purple-900 dark:text-purple-200 flex items-start gap-2 animate-fadeIn">
             <CheckCircle className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
             <div>

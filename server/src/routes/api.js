@@ -5,7 +5,7 @@ import * as xlsx from 'xlsx';
 import { searchTedNotices, getNoticeById, buildExpertQuery } from '../services/tedService.js';
 import { searchMagnitNotices, getMagnitNoticeById } from '../services/magnitService.js';
 import { searchVeramaNotices, getVeramaNoticeById } from '../services/veramaService.js';
-import { naturalLanguageToFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant, callMiniMax } from '../services/minimaxService.js';
+import { naturalLanguageToFilters, analyzeCvAndGenerateSearchFilters, analyzeTender, analyzeTenderWithDocuments, chatWithAssistant, callMiniMax } from '../services/minimaxService.js';
 import { parseUploadedProcurementFiles } from '../services/documentParserService.js';
 import { runWatchlist, runAllActiveWatchlists } from '../services/schedulerService.js';
 import { buildWatchlistManageUrl } from '../services/emailService.js';
@@ -275,6 +275,72 @@ router.post('/ai/smart-search', async (req, res) => {
     res.json({ success: true, filters: filterConfig, tedQuery });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/ai/cv-search', upload.array('files', 15), async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, error: 'Minst en CV-fil (PDF, DOCX, DOC, TXT) krävs för CV-sökning' });
+    }
+
+    const { prompt = '', countries } = req.body;
+    let preferredCountries = ['SWE'];
+    if (countries) {
+      try {
+        preferredCountries = typeof countries === 'string' ? JSON.parse(countries) : countries;
+      } catch (_) {}
+    }
+
+    // Parse uploaded CV files
+    const { documents, documentCount } = await parseUploadedProcurementFiles(files);
+    if (documentCount === 0 || !documents || documents.length === 0) {
+      return res.status(400).json({ success: false, error: 'Kunde inte extrahera text från de uppladdade CV-filerna' });
+    }
+
+    const cvAnalysis = await analyzeCvAndGenerateSearchFilters(documents, prompt);
+
+    // Apply country preference if specified
+    if (preferredCountries && preferredCountries.length > 0) {
+      cvAnalysis.countries = preferredCountries;
+    }
+
+    const tedQuery = buildExpertQuery(cvAnalysis);
+
+    res.json({
+      success: true,
+      filters: {
+        buyer: cvAnalysis.buyer,
+        keywords: cvAnalysis.keywords,
+        excludeKeywords: cvAnalysis.excludeKeywords,
+        cpv: cvAnalysis.cpv,
+        countries: cvAnalysis.countries,
+        formType: cvAnalysis.formType || 'competition',
+        datePreset: cvAnalysis.datePreset || 'all',
+        onlyActive: true,
+        explanation: cvAnalysis.explanation,
+        suggestedWatchlistName: cvAnalysis.suggestedWatchlistName
+      },
+      tedQuery,
+      cvSummary: {
+        fileNames: documents.map(d => d.name),
+        profilesIdentified: cvAnalysis.profilesIdentified || [],
+        skills: cvAnalysis.skills || [],
+        experienceHighlights: cvAnalysis.experienceHighlights || [],
+        suggestedRoles: cvAnalysis.suggestedRoles || [],
+        explanation: cvAnalysis.explanation,
+        suggestedWatchlistName: cvAnalysis.suggestedWatchlistName
+      },
+      parsedDocuments: documents.map(d => ({
+        name: d.name,
+        size: d.size,
+        charCount: d.charCount
+      }))
+    });
+  } catch (error) {
+    console.error('[AI CV Search] Error:', error);
+    res.status(500).json({ success: false, error: error.message || 'CV-sökningen misslyckades' });
   }
 });
 

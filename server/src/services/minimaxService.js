@@ -573,3 +573,114 @@ AKTIV SÖKNING:
   const response = await callMiniMax(conversationHistory, contextInjection, { temperature: 0.35 });
   return response;
 }
+
+/**
+ * Analyze one or more CV documents and generate high-relevance search filters for TED & consulting portals
+ * @param {Array<{ name: string, text: string, charCount?: number }>} cvList
+ * @param {string} userNote - Optional user guidance/focus
+ * @param {Object} companyProfile - Optional company background
+ */
+export async function analyzeCvAndGenerateSearchFilters(cvList = [], userNote = '', companyProfile = null) {
+  let cvCorpus = '';
+  for (const cv of cvList) {
+    const textSample = (cv.text || '').slice(0, 20000);
+    cvCorpus += `\n\n======================================================================\nCV DOKUMENT: ${cv.name}\n======================================================================\n${textSample}\n`;
+  }
+
+  const systemPrompt = `Du är en svensk anbuds- och rekryteringsexpert inom offentlig upphandling och konsultmäkleri (TED, Magnit Source, Verama/Ework).
+Ditt uppdrag är att analysera ett eller flera uppladdade CV:n (konsultprofiler) och skapa optimala, träffsäkra sökfilter, CPV-koder och sökord för att hitta passande upphandlingar och konsultuppdrag.
+
+Instruktioner:
+1. Identifiera de viktigaste rollerna och kompetenserna från CV:na (t.ex. BIM-samordnare, projektledare, miljökonsult, GIS-specialist, konstruktör, IT-arkitekt).
+2. Plocka ut kärnkompetenser, verktyg och metoder (t.ex. Revit, Navisworks, VDC, Civil 3D, IFC, ABK 09, Trafikverket TDOK, Miljöbalken, ArcGIS).
+3. Välj ut de 8-siffriga CPV-koder som bäst matchar dessa konsultområden (t.ex. 71300000 Tekniska konsulttjänster, 71240000 Arkitekt- och ingenjörstjänster, 71320000 Projektering, 72000000 IT-tjänster, 71313000 Miljörådgivning, etc.).
+4. Skapa en fokuserad söksträng för "keywords" där centrala termer och synonymer sammanfogas med " OR " (t.ex. "BIM OR Informationsmodellering OR VDC OR Digital tvilling").
+5. Om användaren angett ett extra önskemål i userNote, prioritera detta.
+
+Returnera ENDAST ett giltigt JSON-objekt med exakt denna struktur (inga markdown-kodblock, endast ren JSON):
+{
+  "buyer": "namn på specifik beställare om relevant utifrån CV eller userNote, annars tom sträng ''",
+  "keywords": "fokuserade sökord och synonymer separerade med OR (t.ex. 'BIM OR Informationsmodellering OR VDC')",
+  "excludeKeywords": "eventuella negativa ord för att rensa bort irrelevanta branscher eller tom sträng ''",
+  "cpv": ["8-siffriga CPV-koder"],
+  "countries": ["SWE"],
+  "formType": "competition",
+  "datePreset": "all",
+  "profilesIdentified": ["Identifierad roll 1", "Roll 2"],
+  "skills": ["Kompetens 1", "Verktyg 2", "Metod 3", "System 4"],
+  "experienceHighlights": ["Erfarenhet 1", "Branschområde 2"],
+  "suggestedRoles": ["Roll 1", "Roll 2"],
+  "explanation": "En pedagogisk förklaring på svenska som sammanfattar CV-profilerna och varför dessa sökkriterier valts.",
+  "suggestedWatchlistName": "Förslag på namn om man vill spara som bevakning (t.ex. 'BIM-specialist Uppdrag')"
+}`;
+
+  const userContent = `Här är ${cvList.length} uppladdade CV-dokument att analysera:${userNote ? `\n\nAnvändarens kompletterande instruktion:\n"${userNote}"` : ''}\n\n${cvCorpus}`;
+
+  const messages = [
+    { role: 'user', content: userContent }
+  ];
+
+  try {
+    const rawResult = await callMiniMax(messages, systemPrompt, { temperature: 0.2, max_tokens: 3000 });
+    const parsed = extractJsonFromLlm(rawResult);
+    if (parsed) {
+      return parsed;
+    }
+  } catch (e) {
+    console.error('[MiniMax] Failed to parse CV with LLM:', e);
+  }
+
+  // Heuristic Fallback if LLM fails or is unavailable
+  const allText = cvList.map(c => c.text).join(' ').toLowerCase();
+  const isBim = /bim|vdc|revit|navisworks|ifc|informationsmodell/i.test(allText);
+  const isMiljo = /miljö|mkb|hållbarhet|klimat|föroren/i.test(allText);
+  const isIt = /utveckl|system|arkitekt|python|java|cloud|data/i.test(allText);
+  const isProj = /projektled|byggled|projekteringsled/i.test(allText);
+
+  const fallbackKeywords = [];
+  const fallbackCpvs = ['71300000'];
+  const fallbackRoles = [];
+  const fallbackSkills = [];
+
+  if (isBim) {
+    fallbackKeywords.push('BIM', 'Informationsmodellering', 'VDC');
+    fallbackCpvs.push('71240000', '71320000', '48000000');
+    fallbackRoles.push('BIM-samordnare / Specialist');
+    fallbackSkills.push('BIM', 'Revit', 'Navisworks', 'VDC');
+  }
+  if (isMiljo) {
+    fallbackKeywords.push('Miljö', 'MKB', 'Hållbarhet');
+    fallbackCpvs.push('71313000');
+    fallbackRoles.push('Miljökonsult');
+    fallbackSkills.push('MKB', 'Miljöbalken', 'Klimatberäkningar');
+  }
+  if (isIt) {
+    fallbackKeywords.push('IT-konsult', 'Systemutveckling');
+    fallbackCpvs.push('72000000');
+    fallbackRoles.push('IT-konsult / Arkitekt');
+    fallbackSkills.push('Systemutveckling', 'IT-arkitektur');
+  }
+  if (isProj) {
+    fallbackKeywords.push('Projektledning', 'Byggledning');
+    fallbackCpvs.push('71541000');
+    fallbackRoles.push('Projektledare Samhällsbyggnad');
+    fallbackSkills.push('Projektstyrning', 'ABK 09');
+  }
+
+  return {
+    buyer: '',
+    keywords: fallbackKeywords.join(' OR ') || 'Teknisk konsult',
+    excludeKeywords: '',
+    cpv: fallbackCpvs,
+    countries: ['SWE'],
+    formType: 'competition',
+    datePreset: 'all',
+    profilesIdentified: fallbackRoles.length > 0 ? fallbackRoles : ['Konsult / Specialist'],
+    skills: fallbackSkills.length > 0 ? fallbackSkills : ['Teknisk rådgivning'],
+    experienceHighlights: ['Teknisk konsultverksamhet inom offentlig sektor'],
+    suggestedRoles: fallbackRoles.length > 0 ? fallbackRoles : ['Teknisk rådgivare'],
+    explanation: `Sökkriterier genererade från ${cvList.length} uppladdade CV:n baserat på identifierade nyckelkompetenser.`,
+    suggestedWatchlistName: `CV-matchning: ${fallbackRoles[0] || 'Konsultuppdrag'}`
+  };
+}
+

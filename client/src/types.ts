@@ -93,6 +93,16 @@ export interface ParsedDocument {
   preview?: string;
 }
 
+export interface CvSearchSummary {
+  fileNames: string[];
+  profilesIdentified: string[];
+  skills: string[];
+  experienceHighlights?: string[];
+  suggestedRoles?: string[];
+  explanation: string;
+  suggestedWatchlistName?: string;
+}
+
 export interface RequestedRole {
   role: string;
   requirements: string;

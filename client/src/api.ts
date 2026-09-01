@@ -9,6 +9,7 @@ import {
   ChatMessage,
   AIAnalysis,
   ParsedDocument,
+  CvSearchSummary,
   CpvCategory,
   TeamMember,
   AdminStats,
@@ -75,6 +76,44 @@ export const api = {
       method: 'POST',
       headers,
       body: JSON.stringify({ prompt })
+    });
+    return res.json();
+  },
+
+  // AI CV Search (Match tenders from uploaded CVs)
+  cvSearch: async (
+    files: File[],
+    prompt = '',
+    countries: string[] = ['SWE']
+  ): Promise<{
+    success: boolean;
+    filters?: NoticeFilters & { explanation?: string; suggestedWatchlistName?: string };
+    tedQuery?: string;
+    cvSummary?: CvSearchSummary;
+    parsedDocuments?: Array<{ name: string; size: number; charCount?: number }>;
+    error?: string;
+  }> => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    if (prompt) {
+      formData.append('prompt', prompt);
+    }
+    if (countries && countries.length > 0) {
+      formData.append('countries', JSON.stringify(countries));
+    }
+
+    const token = await getAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}/ai/cv-search`, {
+      method: 'POST',
+      headers,
+      body: formData
     });
     return res.json();
   },
