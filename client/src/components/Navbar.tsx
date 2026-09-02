@@ -57,6 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const isAdmin = !isSupabaseConfigured ||
     (currentUser?.email?.toLowerCase() === 'mats.romblad@wsp.com') ||
+    (currentUser?.email?.toLowerCase() === 'matsromblad@gmail.com') ||
     currentUser?.role === 'admin' ||
     currentUser?.user_metadata?.role === 'admin';
 

@@ -144,7 +144,8 @@ export async function requireAdmin(req, res, next) {
     }
 
     const email = (req.user?.email || '').toLowerCase();
-    if (email === 'mats.romblad@wsp.com' || req.user?.user_metadata?.role === 'admin') {
+    const adminEmails = ['mats.romblad@wsp.com', 'matsromblad@gmail.com'];
+    if (adminEmails.includes(email) || req.user?.user_metadata?.role === 'admin') {
       req.isAdmin = true;
       return next();
     }

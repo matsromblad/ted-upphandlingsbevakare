@@ -920,7 +920,7 @@ export const profileDao = {
   get: async (userId, client = supabaseAdmin) => {
     if (isCloudUser(userId)) {
       const { data } = await client.from('profiles').select('*').eq('id', userId).single();
-      const isMats = (data?.email || '').toLowerCase() === 'mats.romblad@wsp.com';
+      const isMats = ['mats.romblad@wsp.com', 'matsromblad@gmail.com'].includes((data?.email || '').toLowerCase());
       if (!data || !data.company_name || data.company_name === 'Mitt Företag AB') {
         return {
           id: userId,
@@ -1470,7 +1470,7 @@ export const adminDao = {
 
         return (profiles || []).map(p => {
           const email = p.email || '';
-          const isMats = email.toLowerCase() === 'mats.romblad@wsp.com';
+          const isMats = ['mats.romblad@wsp.com', 'matsromblad@gmail.com'].includes(email.toLowerCase());
           return {
             id: p.id,
             email: p.email || '',
